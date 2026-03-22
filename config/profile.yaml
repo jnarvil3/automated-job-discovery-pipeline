@@ -1,0 +1,44 @@
+name: Amane Dias
+email: ""  # set via AMANE_EMAIL env var
+
+target_roles:
+  - Working Student
+  - Werkstudent
+  - Intern
+  - Internship
+  - Praktikum
+
+target_fields:
+  - Finance
+  - FP&A
+  - Financial Planning and Analysis
+  - Controlling
+  - Sustainability
+  - Renewable Energy
+  - Climate Change
+  - Back Office
+  - Marketing
+
+constraints:
+  language: "English (German NOT required — she is A1)"
+  location: Germany
+  hours: "15-20h/week (working student) or full-time temporary (internship)"
+  context: >
+    International master's student finishing thesis this semester.
+    Visa requires student-compatible employment.
+    English-friendly positions only.
+
+resume_path: resume.pdf
+
+# Indeed RSS search URLs — each combines a role type with a field
+indeed_searches:
+  - "https://de.indeed.com/rss?q=working+student+finance&l=Germany"
+  - "https://de.indeed.com/rss?q=working+student+sustainability&l=Germany"
+  - "https://de.indeed.com/rss?q=working+student+renewable+energy&l=Germany"
+  - "https://de.indeed.com/rss?q=working+student+controlling&l=Germany"
+  - "https://de.indeed.com/rss?q=working+student+FP%26A&l=Germany"
+  - "https://de.indeed.com/rss?q=intern+finance&l=Germany"
+  - "https://de.indeed.com/rss?q=intern+sustainability&l=Germany"
+  - "https://de.indeed.com/rss?q=intern+renewable+energy&l=Germany"
+  - "https://de.indeed.com/rss?q=werkstudent+finance&l=Germany"
+  - "https://de.indeed.com/rss?q=werkstudent+controlling&l=Germany"
