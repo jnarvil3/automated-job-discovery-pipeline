@@ -36,7 +36,13 @@ COMMON MISTAKES TO AVOID:
 - A role at a sustainability company but in an unrelated function (e.g. software engineer at a solar company) = LOW
 - If the job description is entirely in German = LOW (she can't read it, she can't do the job)
 
-Return: {"score": "HIGH|MEDIUM|LOW", "reason": "one sentence"}"""
+Also return a fit_score from 1-10 indicating how strong the match is.
+10 = perfect match (e.g. "Working Student FP&A" at a renewable energy company, English-only)
+7-9 = strong match (right role + right field, no German)
+4-6 = partial match
+1-3 = poor match
+
+Return: {"score": "HIGH|MEDIUM|LOW", "fit_score": 8, "reason": "one sentence"}"""
 
 
 def score_jobs(jobs: list[Job]) -> list[Job]:
@@ -64,8 +70,9 @@ def score_jobs(jobs: list[Job]) -> list[Job]:
 
             result = json.loads(text)
             job.score = result.get("score", "LOW").upper()
+            job.fit_score = int(result.get("fit_score", 0))
             job.score_reason = result.get("reason", "")
-            print(f"  [{job.score}] {job.title} at {job.company} — {job.score_reason}")
+            print(f"  [{job.score} {job.fit_score}/10] {job.title} at {job.company} — {job.score_reason}")
 
         except (json.JSONDecodeError, KeyError, IndexError) as e:
             print(f"  [ERROR] Failed to parse score for {job.title}: {e}")

@@ -13,6 +13,7 @@ class Job:
     source: str  # "indeed", "arbeitnow", "linkedin"
     found_date: str = field(default_factory=lambda: date.today().isoformat())
     score: str = ""  # HIGH, MEDIUM, LOW
+    fit_score: int = 0  # 1-10 numeric fit ranking
     score_reason: str = ""
     cover_letter: str = ""
     status: str = "new"

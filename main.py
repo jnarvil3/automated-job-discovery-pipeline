@@ -122,10 +122,18 @@ def run():
     for job in scored_jobs:
         save_job(conn, job)
 
+    # Keep only top 3 HIGHs — demote the rest to MEDIUM
+    TOP_N = 3
     high = [j for j in scored_jobs if j.score == "HIGH"]
+    high.sort(key=lambda j: j.fit_score, reverse=True)
+    for job in high[TOP_N:]:
+        job.score = "MEDIUM"
+        job.score_reason = f"(Demoted from HIGH — fit {job.fit_score}/10) {job.score_reason}"
+
+    high = high[:TOP_N]
     medium = [j for j in scored_jobs if j.score == "MEDIUM"]
     low = [j for j in scored_jobs if j.score == "LOW"]
-    print(f"  HIGH: {len(high)} | MEDIUM: {len(medium)} | LOW: {len(low)}")
+    print(f"  TOP {TOP_N} HIGH: {len(high)} | MEDIUM: {len(medium)} | LOW: {len(low)}")
 
     # --- Step 6: Send digest ---
     print("\n📧 Sending digest...")
