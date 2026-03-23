@@ -24,8 +24,9 @@ from collectors.arbeitnow import ArbeitnowCollector
 from collectors.adzuna import AdzunaCollector
 from collectors.himalayas import HimalayasCollector
 from core.database import get_connection, job_exists, save_job, get_todays_jobs
-from core.enricher import enrich_jobs
+from core.enricher import enrich_jobs, requires_german
 from core.scorer import score_jobs
+from delivery.apply_dispatcher import apply_to_jobs
 from delivery.email import send_digest
 
 
@@ -117,25 +118,51 @@ def run():
     print(f"\n🎯 Scoring {len(enriched_jobs)} jobs with GPT-4o-mini...")
     scored_jobs = score_jobs(enriched_jobs)
 
-    # --- Step 5: Save ---
-    print("\n💾 Saving to database...")
+    # --- Step 4.5: Hard German filter (safety net after AI scoring) ---
+    print("\n🛡️  Post-scoring German filter...")
+    german_caught = 0
     for job in scored_jobs:
-        save_job(conn, job)
+        if job.score in ("HIGH", "MEDIUM"):
+            is_german, reason = requires_german(f"{job.title} {job.description}")
+            if is_german:
+                job.score = "LOW"
+                job.score_reason = f"Post-score rejection: {reason}"
+                german_caught += 1
+    if german_caught:
+        print(f"  Caught {german_caught} German-requirement jobs that slipped through scoring")
 
-    # Keep only top 3 HIGHs — demote the rest to MEDIUM
+    # --- Step 5: Tier assignment ---
+    # TOP tier: best 2-3 HIGH jobs with fit_score >= 7
+    MIN_HIGH_FIT = 7
     TOP_N = 3
-    high = [j for j in scored_jobs if j.score == "HIGH"]
+    high = [j for j in scored_jobs if j.score == "HIGH" and j.fit_score >= MIN_HIGH_FIT]
     high.sort(key=lambda j: j.fit_score, reverse=True)
+
+    # Demote HIGH jobs beyond top N, or those below fit threshold
+    weak_highs = [j for j in scored_jobs if j.score == "HIGH" and j.fit_score < MIN_HIGH_FIT]
+    for job in weak_highs:
+        job.score = "MEDIUM"
+        job.score_reason = f"(Fit {job.fit_score}/10 — below threshold) {job.score_reason}"
     for job in high[TOP_N:]:
         job.score = "MEDIUM"
-        job.score_reason = f"(Demoted from HIGH — fit {job.fit_score}/10) {job.score_reason}"
+        job.score_reason = f"(Demoted from TOP — fit {job.fit_score}/10) {job.score_reason}"
 
     high = high[:TOP_N]
     medium = [j for j in scored_jobs if j.score == "MEDIUM"]
     low = [j for j in scored_jobs if j.score == "LOW"]
-    print(f"  TOP {TOP_N} HIGH: {len(high)} | MEDIUM: {len(medium)} | LOW: {len(low)}")
+    print(f"  TOP {len(high)} | MEDIUM: {len(medium)} | LOW: {len(low)}")
 
-    # --- Step 6: Send digest ---
+    # --- Step 5.5: Auto-apply ---
+    print("\n🤖 Auto-applying...")
+    dry_run = "--send" not in sys.argv
+    scored_jobs = apply_to_jobs(scored_jobs, profile, conn, dry_run=dry_run)
+
+    # --- Step 6: Save ---
+    print("\n💾 Saving to database...")
+    for job in scored_jobs:
+        save_job(conn, job)
+
+    # --- Step 7: Send digest ---
     print("\n📧 Sending digest...")
     recipient = profile.get("email") or os.environ.get("AMANE_EMAIL", "")
 

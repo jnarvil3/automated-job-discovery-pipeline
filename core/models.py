@@ -16,7 +16,15 @@ class Job:
     fit_score: int = 0  # 1-10 numeric fit ranking
     score_reason: str = ""
     cover_letter: str = ""
-    status: str = "new"
+    status: str = "new"  # new, applying, auto_applied, apply_failed, apply_skipped_captcha, quick_apply, skipped
+    apply_email: str = ""  # extracted application email if found
+    # ATS detection fields
+    ats_platform: str = ""  # greenhouse, lever, workable, personio, smartrecruiters, unknown
+    ats_job_id: str = ""  # platform-specific job ID
+    ats_board_token: str = ""  # board token for API-based apply
+    apply_method: str = ""  # api, browser, email, manual
+    apply_attempts: int = 0
+    apply_error: str = ""
 
     @property
     def id(self) -> str:

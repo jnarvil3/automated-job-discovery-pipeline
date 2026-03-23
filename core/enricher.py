@@ -1,11 +1,13 @@
 """
 Fetches full job descriptions from URLs and checks for German language requirements.
+Also detects ATS platforms and extracts application emails.
 """
 
 import re
 import urllib.request
 from html.parser import HTMLParser
 from core.models import Job
+from core.ats_detector import detect_ats
 
 # Patterns that indicate German is required
 GERMAN_REQUIRED_PATTERNS = [
@@ -30,6 +32,20 @@ GERMAN_REQUIRED_PATTERNS = [
 ]
 
 COMPILED_PATTERNS = [re.compile(p, re.IGNORECASE) for p in GERMAN_REQUIRED_PATTERNS]
+
+# Pattern to extract application/HR emails from job descriptions
+EMAIL_PATTERN = re.compile(
+    r"(?:apply|application|bewerbung|send|submit|contact|hr|recruiting|talent|career|jobs)"
+    r"[^@\n]{0,30}?"
+    r"([\w.+-]+@[\w-]+\.[\w.-]+)",
+    re.IGNORECASE,
+)
+# Fallback: any email in the page that looks like HR/recruiting
+HR_EMAIL_PATTERN = re.compile(
+    r"\b((?:hr|recruiting|talent|career|jobs|apply|bewerbung|people|hiring)"
+    r"[\w.+-]*@[\w-]+\.[\w.-]+)\b",
+    re.IGNORECASE,
+)
 
 
 class TextExtractor(HTMLParser):
@@ -56,8 +72,13 @@ class TextExtractor(HTMLParser):
         return " ".join(self.text_parts)
 
 
-def fetch_full_description(url: str) -> str | None:
-    """Fetch a job URL and extract the visible text content."""
+def fetch_full_description(url: str) -> tuple[str | None, str, str]:
+    """
+    Fetch a job URL and extract the visible text content.
+
+    Returns:
+        (text_content, final_url_after_redirects, raw_html)
+    """
     try:
         req = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -65,6 +86,7 @@ def fetch_full_description(url: str) -> str | None:
             "Accept-Language": "en-US,en;q=0.9",
         })
         with urllib.request.urlopen(req, timeout=10) as resp:
+            final_url = resp.url  # URL after redirects
             html = resp.read().decode("utf-8", errors="ignore")
 
         extractor = TextExtractor()
@@ -72,9 +94,9 @@ def fetch_full_description(url: str) -> str | None:
         text = extractor.get_text()
         # Clean up whitespace
         text = re.sub(r"\s+", " ", text).strip()
-        return text[:5000]  # cap at 5000 chars for scoring
+        return text[:5000], final_url, html
     except Exception:
-        return None
+        return None, url, ""
 
 
 def requires_german(text: str) -> tuple[bool, str]:
@@ -90,6 +112,19 @@ def requires_german(text: str) -> tuple[bool, str]:
     return False, ""
 
 
+def extract_apply_email(text: str) -> str:
+    """Try to extract an application email from job description text."""
+    # First try: email near apply/application keywords
+    match = EMAIL_PATTERN.search(text)
+    if match:
+        return match.group(1).lower()
+    # Fallback: any email that looks like HR/recruiting
+    match = HR_EMAIL_PATTERN.search(text)
+    if match:
+        return match.group(1).lower()
+    return ""
+
+
 def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
     """
     Fetch full descriptions and filter out jobs requiring German.
@@ -101,7 +136,7 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
     for i, job in enumerate(jobs):
         print(f"  [{i+1}/{len(jobs)}] Checking {job.title} at {job.company}...", end=" ")
 
-        full_text = fetch_full_description(job.url)
+        full_text, final_url, raw_html = fetch_full_description(job.url)
         if full_text:
             # Update description with richer content for scoring
             job.description = full_text[:3000]
@@ -114,6 +149,18 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
                 german_jobs.append(job)
                 continue
 
+            # Try to extract an application email
+            job.apply_email = extract_apply_email(full_text)
+
+        # Detect ATS platform from final URL (after redirects) and page HTML
+        platform, job_id, board_token = detect_ats(final_url, raw_html)
+        if not platform:
+            # Also try the original URL
+            platform, job_id, board_token = detect_ats(job.url)
+        job.ats_platform = platform
+        job.ats_job_id = job_id
+        job.ats_board_token = board_token
+
         # Also check the original description/title
         is_german, reason = requires_german(f"{job.title} {job.description}")
         if is_german:
@@ -123,7 +170,9 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
             german_jobs.append(job)
             continue
 
-        print("OK")
+        ats_note = f" [{job.ats_platform}]" if job.ats_platform else ""
+        email_note = f" (apply: {job.apply_email})" if job.apply_email else ""
+        print(f"OK{ats_note}{email_note}")
         english_jobs.append(job)
 
     return english_jobs, german_jobs

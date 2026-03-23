@@ -1,5 +1,8 @@
 name: Amane Dias
+first_name: Amane
+last_name: Dias
 email: ""  # set via AMANE_EMAIL env var
+phone: ""  # set via AMANE_PHONE env var
 
 target_roles:
   - Working Student
@@ -28,7 +31,57 @@ constraints:
     Visa requires student-compatible employment.
     English-friendly positions only.
 
+# Structured candidate data for auto-apply form filling
+candidate:
+  headline: "International Master's Student | Finance & Sustainability"
+  linkedin_url: ""  # set via AMANE_LINKEDIN env var
+  current_location: "Germany"
+  nationality: "Brazilian"
+  work_authorization: "Student visa — eligible for working student and internship positions"
+
+  education:
+    - degree: "Master of Science"
+      field: ""  # fill in actual field
+      university: ""  # fill in actual university
+      graduation: "2026"
+
+  languages:
+    - language: English
+      level: Fluent
+    - language: Portuguese
+      level: Native
+    - language: German
+      level: A1 (Basic)
+
+  # Pre-answered screening questions (matched by keyword patterns)
+  screening_answers:
+    salary_expectation: "Negotiable"
+    earliest_start_date: "Immediately"
+    willing_to_relocate: "Already based in Germany"
+    work_authorization: "Yes — student visa with work permission"
+    hours_per_week: "15-20"
+    german_fluency: "A1 — Basic level"
+    english_fluency: "Fluent"
+    notice_period: "Immediately available"
+    years_of_experience: "0-1 (academic + internship experience)"
+
+  gender: ""  # optional, leave blank to skip
+  how_did_you_hear: "Job board"
+
 resume_path: resume.pdf
+sender_email: ""  # Resend sender address for auto-apply emails
+
+# Auto-apply configuration
+auto_apply:
+  enabled: true
+  methods:
+    api: true        # Greenhouse, Lever, Workable direct API
+    browser: true    # Playwright-based form filling
+    email: true      # Resend email with resume
+  tiers:
+    - MEDIUM         # Which score tiers to auto-apply
+  max_per_day: 5
+  max_retries: 3
 
 # Indeed RSS search URLs — each combines a role type with a field
 indeed_searches:

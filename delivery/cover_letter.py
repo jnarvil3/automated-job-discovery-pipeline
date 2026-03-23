@@ -1,0 +1,222 @@
+"""
+Shared cover letter generation for all apply methods.
+Generates text, PDF, and DOCX versions for ATS uploads.
+"""
+
+import os
+from datetime import date
+from pathlib import Path
+
+from openai import OpenAI
+from core.models import Job
+
+
+LETTERS_DIR = Path(__file__).parent.parent / "data" / "cover_letters"
+
+LETTER_PROMPT = """You write short, professional cover letters for a specific candidate. Return ONLY the letter body — no date, no address block, no greeting, no signature (those are added separately by the system).
+
+CANDIDATE:
+- Amane Dias, international master's student in Germany (Brazilian)
+- Finishing thesis this semester
+- Looking for Working Student / Internship roles
+- Fields: Finance, FP&A, Controlling, Sustainability, Renewable Energy, Back Office, Marketing
+- Languages: English (fluent), Portuguese (native), German (A1 — basic only)
+
+RULES:
+- Keep it under 200 words
+- Be warm but professional — not generic
+- Reference the specific company and role
+- Highlight her international perspective and relevant academic background
+- Do NOT mention German skills — only mention English and Portuguese
+- End with enthusiasm about contributing to the team
+- Write in proper paragraphs (not bullet points)
+"""
+
+
+def generate_cover_letter(job: Job, client: OpenAI | None = None) -> str:
+    """Generate a short, tailored cover letter for the job. Returns plain text."""
+    if client is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            return ""
+        client = OpenAI(api_key=api_key)
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            max_tokens=400,
+            messages=[
+                {"role": "system", "content": LETTER_PROMPT},
+                {"role": "user", "content": (
+                    f"Write a cover letter body for:\n"
+                    f"Role: {job.title}\n"
+                    f"Company: {job.company}\n"
+                    f"Location: {job.location}\n"
+                    f"Description: {job.description[:800]}"
+                )},
+            ],
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"  [cover_letter] Failed to generate for {job.title}: {e}")
+        return ""
+
+
+def _format_full_letter(body: str, job: Job) -> str:
+    """Wrap the GPT-generated body with proper letter formatting."""
+    today = date.today().strftime("%B %d, %Y")
+    return (
+        f"{today}\n\n"
+        f"Re: {job.title}\n"
+        f"{job.company}\n\n"
+        f"Dear Hiring Team,\n\n"
+        f"{body}\n\n"
+        f"Best regards,\n"
+        f"Amane Dias"
+    )
+
+
+def generate_cover_letter_pdf(job: Job, letter_text: str) -> str:
+    """
+    Generate a PDF cover letter. Returns the file path.
+    Uses reportlab if available, falls back to FPDF.
+    """
+    LETTERS_DIR.mkdir(parents=True, exist_ok=True)
+    safe_company = "".join(c for c in job.company if c.isalnum() or c in " -_")[:30].strip()
+    filename = f"CoverLetter_{safe_company}_{job.id}.pdf"
+    filepath = LETTERS_DIR / filename
+    full_text = _format_full_letter(letter_text, job)
+
+    # Try reportlab first (better quality)
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_LEFT
+
+        doc = SimpleDocTemplate(str(filepath), pagesize=A4,
+                                leftMargin=2.5*cm, rightMargin=2.5*cm,
+                                topMargin=2.5*cm, bottomMargin=2.5*cm)
+        styles = getSampleStyleSheet()
+        body_style = ParagraphStyle('Body', parent=styles['Normal'],
+                                     fontSize=11, leading=15, alignment=TA_LEFT,
+                                     spaceAfter=10)
+
+        story = []
+        for paragraph in full_text.split("\n\n"):
+            paragraph = paragraph.replace("\n", "<br/>")
+            story.append(Paragraph(paragraph, body_style))
+            story.append(Spacer(1, 6))
+
+        doc.build(story)
+        return str(filepath)
+
+    except ImportError:
+        pass
+
+    # Fallback: fpdf2
+    try:
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=25)
+        pdf.set_margins(25, 25, 25)
+        pdf.set_font("Helvetica", size=11)
+
+        for paragraph in full_text.split("\n\n"):
+            pdf.multi_cell(0, 6, paragraph)
+            pdf.ln(4)
+
+        pdf.output(str(filepath))
+        return str(filepath)
+
+    except ImportError:
+        pass
+
+    # Last resort: minimal PDF by hand (no dependencies)
+    _write_minimal_pdf(filepath, full_text)
+    return str(filepath)
+
+
+def generate_cover_letter_docx(job: Job, letter_text: str) -> str:
+    """
+    Generate a DOCX cover letter. Returns the file path.
+    Requires python-docx.
+    """
+    LETTERS_DIR.mkdir(parents=True, exist_ok=True)
+    safe_company = "".join(c for c in job.company if c.isalnum() or c in " -_")[:30].strip()
+    filename = f"CoverLetter_{safe_company}_{job.id}.docx"
+    filepath = LETTERS_DIR / filename
+    full_text = _format_full_letter(letter_text, job)
+
+    try:
+        from docx import Document
+        from docx.shared import Pt
+
+        doc = Document()
+        style = doc.styles['Normal']
+        style.font.name = 'Calibri'
+        style.font.size = Pt(11)
+
+        for paragraph in full_text.split("\n\n"):
+            doc.add_paragraph(paragraph)
+
+        doc.save(str(filepath))
+        return str(filepath)
+
+    except ImportError:
+        print("  [cover_letter] python-docx not installed — skipping DOCX generation")
+        return ""
+
+
+def _write_minimal_pdf(filepath: Path, text: str):
+    """Write a bare-minimum valid PDF with no external dependencies."""
+    lines = text.split("\n")
+    # Build PDF content stream
+    content_lines = []
+    y = 750  # start near top of page
+    for line in lines:
+        if not line.strip():
+            y -= 14
+            continue
+        # Escape special PDF characters
+        safe = line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        content_lines.append(f"BT /F1 11 Tf 72 {y} Td ({safe}) Tj ET")
+        y -= 14
+        if y < 72:  # don't write below margin
+            break
+
+    stream = "\n".join(content_lines)
+
+    objects = [
+        # 1: Catalog
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj",
+        # 2: Pages
+        "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj",
+        # 3: Page
+        "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj",
+        # 4: Content stream
+        f"4 0 obj\n<< /Length {len(stream)} >>\nstream\n{stream}\nendstream\nendobj",
+        # 5: Font
+        "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj",
+    ]
+
+    with open(filepath, "w") as f:
+        f.write("%PDF-1.4\n")
+        offsets = []
+        for obj in objects:
+            offsets.append(f.tell())
+            f.write(obj + "\n")
+        xref_pos = f.tell()
+        f.write("xref\n")
+        f.write(f"0 {len(objects) + 1}\n")
+        f.write("0000000000 65535 f \n")
+        for off in offsets:
+            f.write(f"{off:010d} 00000 n \n")
+        f.write("trailer\n")
+        f.write(f"<< /Size {len(objects) + 1} /Root 1 0 R >>\n")
+        f.write("startxref\n")
+        f.write(f"{xref_pos}\n")
+        f.write("%%EOF\n")

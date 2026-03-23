@@ -29,12 +29,18 @@ SCORING RULES — be strict:
 - MEDIUM = ONE condition partially met: right role type but adjacent/unclear field, OR right field but role type is slightly off (e.g. "junior" entry-level that could work), OR unclear language requirements
 - LOW = ANY of these: requires German, senior/manager/lead role, wrong field entirely, requires years of experience, full-time permanent position
 
-COMMON MISTAKES TO AVOID:
-- A job title in German (e.g. "Finanzbuchhalter") almost always requires German — score LOW
+CRITICAL — GERMAN LANGUAGE RULE (ZERO TOLERANCE):
+- ANY mention of German being required, expected, or preferred = AUTOMATIC LOW. No exceptions.
+- This includes: "German B1/B2/C1", "Deutschkenntnisse", "fließend Deutsch", "gute Deutschkenntnisse", "German is a plus" (if framed as expected)
+- Job title in German (e.g. "Finanzbuchhalter") = almost always requires German = LOW
+- Description written entirely in German = LOW
+- Even "German is a plus/nice to have" in combination with other German indicators = LOW
+- When in doubt about language requirements, score LOW — never let a German-required job through as HIGH or MEDIUM
+
+OTHER MISTAKES TO AVOID:
 - "Senior", "Manager", "Lead", "Director", "Head of" = NOT suitable for a student — score LOW
 - "Junior" roles MIGHT work if they're entry-level — score MEDIUM at best
 - A role at a sustainability company but in an unrelated function (e.g. software engineer at a solar company) = LOW
-- If the job description is entirely in German = LOW (she can't read it, she can't do the job)
 
 Also return a fit_score from 1-10 indicating how strong the match is.
 10 = perfect match (e.g. "Working Student FP&A" at a renewable energy company, English-only)
