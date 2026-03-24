@@ -28,6 +28,7 @@ from core.database import get_connection, job_exists, job_exists_by_title_compan
 from core.enricher import enrich_jobs, requires_german
 from core.scorer import score_jobs
 from delivery.apply_dispatcher import apply_to_jobs
+from delivery.cover_letter import generate_cover_letter
 from delivery.email import send_digest
 
 
@@ -197,6 +198,15 @@ def run():
     medium = [j for j in scored_jobs if j.score == "MEDIUM"]
     low = [j for j in scored_jobs if j.score == "LOW"]
     print(f"  TOP {len(high)} | MEDIUM: {len(medium)} | LOW: {len(low)}")
+
+    # --- Step 5.1: Generate cover letters for HIGH-tier jobs ---
+    if high:
+        print(f"\n📝 Generating cover letters for {len(high)} TOP jobs...")
+        for job in high:
+            if not job.cover_letter:
+                job.cover_letter = generate_cover_letter(job)
+                if job.cover_letter:
+                    print(f"  ✓ {job.title} at {job.company}")
 
     # --- Step 5.5: Auto-apply ---
     print("\n🤖 Auto-applying...")

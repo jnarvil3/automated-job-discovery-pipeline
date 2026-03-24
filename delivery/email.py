@@ -139,12 +139,23 @@ def send_digest(jobs: list[Job], recipient_email: str):
             print(f"          {job.url}\n")
         return
 
+    sender_email = os.environ.get("SENDER_EMAIL", "")
+    if not sender_email:
+        print("[email] SENDER_EMAIL not set — refusing to send from test domain. Set SENDER_EMAIL env var.")
+        subject, body = build_digest(jobs)
+        print(f"\nSubject: {subject}\n")
+        for job in jobs:
+            print(f"  [{job.score}] {job.title} at {job.company} ({job.location})")
+            print(f"          {job.score_reason}")
+            print(f"          {job.url}\n")
+        return
+
     resend.api_key = api_key
     subject, body = build_digest(jobs)
 
     try:
         result = resend.Emails.send({
-            "from": "Amane Jobs <onboarding@resend.dev>",
+            "from": f"Amane Jobs <{sender_email}>",
             "to": [recipient_email],
             "subject": subject,
             "html": body,

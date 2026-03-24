@@ -94,8 +94,15 @@ def _try_email_apply(job: Job, candidate: dict, cover_letter: str,
             response_data={"dry_run": True},
         )
 
+    sender_email = os.environ.get("SENDER_EMAIL", "")
+    if not sender_email:
+        return ApplicationResult(
+            success=False, method="email",
+            message="SENDER_EMAIL not set — refusing to send from test domain",
+            response_data={},
+        )
+
     resend.api_key = api_key
-    sender = candidate.get("email", "onboarding@resend.dev")
     full_name = f"{candidate.get('first_name', '')} {candidate.get('last_name', '')}".strip()
 
     html_body = f"""
@@ -106,7 +113,7 @@ def _try_email_apply(job: Job, candidate: dict, cover_letter: str,
     """
 
     email_params = {
-        "from": f"{full_name} <onboarding@resend.dev>",
+        "from": f"{full_name} <{sender_email}>",
         "to": [job.apply_email],
         "subject": f"Application: {job.title} — {full_name}",
         "html": html_body,

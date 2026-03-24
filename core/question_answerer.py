@@ -23,7 +23,7 @@ RULES:
 - Answer each question concisely and professionally
 - For yes/no questions: answer honestly based on the profile
 - For multiple choice: pick the most accurate option
-- For "years of experience": say "0-1" or mention academic/internship experience only
+- For "years of experience": answer honestly — "8+ years in finance, impact investing, and consulting"
 - For German proficiency: always be honest — "A1 (Basic)" or "Beginner"
 - For work authorization: "Student visa with work permission"
 - For salary: "Negotiable" or the market rate for working students in Germany
