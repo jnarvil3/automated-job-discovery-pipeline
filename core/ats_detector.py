@@ -27,7 +27,7 @@ ATS_PATTERNS = [
     (
         "workable",
         re.compile(
-            r"(?:apply\.workable\.com/(?P<board>[^/]+)|(?P<board2>[^.]+)\.workable\.com)/j/(?P<job_id>[A-Za-z0-9]+)",
+            r"(?:apply\.workable\.com/(?P<board>[^/]+)|(?P<board2>[^./]+)\.workable\.com)/j/(?P<job_id>[A-Za-z0-9]+)",
             re.IGNORECASE,
         ),
     ),
@@ -35,7 +35,7 @@ ATS_PATTERNS = [
     (
         "personio",
         re.compile(
-            r"(?P<board>[^.]+)\.jobs\.personio\.(?:de|com)/job/(?P<job_id>\d+)",
+            r"(?P<board>[^./]+)\.jobs\.personio\.(?:de|com)/job/(?P<job_id>\d+)",
             re.IGNORECASE,
         ),
     ),
@@ -51,7 +51,7 @@ ATS_PATTERNS = [
     (
         "bamboohr",
         re.compile(
-            r"(?P<board>[^.]+)\.bamboohr\.com/(?:careers|jobs)/(?P<job_id>\d+)",
+            r"(?P<board>[^./]+)\.bamboohr\.com/(?:careers|jobs)/(?P<job_id>\d+)",
             re.IGNORECASE,
         ),
     ),
