@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from collectors.arbeitnow import ArbeitnowCollector
 from collectors.adzuna import AdzunaCollector
 from collectors.himalayas import HimalayasCollector
-from core.database import get_connection, job_exists, save_job, get_todays_jobs
+from core.database import get_connection, job_exists, job_exists_by_title_company, save_job, get_todays_jobs
 from core.enricher import enrich_jobs, requires_german
 from core.scorer import score_jobs
 from delivery.apply_dispatcher import apply_to_jobs
@@ -65,9 +65,17 @@ def run():
     # --- Step 2: Deduplicate ---
     print("\n🔍 Deduplicating...")
     new_jobs = []
+    seen_title_company: set[tuple[str, str]] = set()
     for job in all_jobs:
-        if not job_exists(conn, job):
-            new_jobs.append(job)
+        key = (job.title.strip().lower(), job.company.strip().lower())
+        if job_exists(conn, job):
+            continue
+        if job_exists_by_title_company(conn, job.title, job.company):
+            continue
+        if key in seen_title_company:
+            continue
+        seen_title_company.add(key)
+        new_jobs.append(job)
 
     print(f"  New jobs: {len(new_jobs)} (skipped {len(all_jobs) - len(new_jobs)} duplicates)")
 

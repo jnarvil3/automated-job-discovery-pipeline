@@ -74,6 +74,15 @@ def job_exists(conn: sqlite3.Connection, job: Job) -> bool:
     return row is not None
 
 
+def job_exists_by_title_company(conn: sqlite3.Connection, title: str, company: str) -> bool:
+    """Check if a job with the same title+company already exists (catches cross-source dupes)."""
+    row = conn.execute(
+        "SELECT 1 FROM jobs WHERE LOWER(title) = LOWER(?) AND LOWER(company) = LOWER(?)",
+        (title.strip(), company.strip()),
+    ).fetchone()
+    return row is not None
+
+
 def save_job(conn: sqlite3.Connection, job: Job):
     conn.execute(
         """INSERT OR REPLACE INTO jobs
