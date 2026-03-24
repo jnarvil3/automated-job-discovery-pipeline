@@ -13,23 +13,46 @@ from core.models import Job
 
 LETTERS_DIR = Path(__file__).parent.parent / "data" / "cover_letters"
 
-LETTER_PROMPT = """You write short, professional cover letters for a specific candidate. Return ONLY the letter body — no date, no address block, no greeting, no signature (those are added separately by the system).
+LETTER_PROMPT = """You write professional cover letters for a specific candidate. Return ONLY the letter body — no date, no address block, no greeting, no signature (those are added separately by the system).
 
-CANDIDATE:
-- Amane Dias, international master's student in Germany (Brazilian)
-- Finishing thesis this semester
-- Looking for Working Student / Internship roles
-- Fields: Finance, FP&A, Controlling, Sustainability, Renewable Energy, Back Office, Marketing
-- Languages: English (fluent), Portuguese (native), German (A1 — basic only)
+CANDIDATE — Amane Aguiar Dias de Azevedo:
+- MA in International and Development Economics at HTW Berlin (graduating Dec 2026, currently on thesis)
+- BA in Economics from Federal University of Bahia
+- 8+ years of professional experience in finance, impact investing, consulting, and program management
+- Languages: English (C2), Portuguese (native), Spanish (C2), German (A1)
+- Currently in Berlin, available immediately
+
+KEY EXPERIENCE TO DRAW FROM (select what's relevant to each job):
+1. Sitawi (Impact Investing) — Consultant, then Senior Coordinator, then Senior Analyst:
+   - Due diligence including financial modeling (P&L, Balance Sheet, Cash Flow analyses)
+   - Portfolio monitoring of impact-oriented businesses, technical assistance
+   - Reporting to global partners (USAID, GIZ), investor relations (UHNW individuals)
+   - Led development of a financial instrument for climate justice organizations
+   - Feasibility analysis of a pioneer impact-linked investment fund
+2. AVSI Brasil — Program Manager:
+   - Managed multi-million-dollar budgets (3M USD) for UNHCR/UNICEF projects at Brazil-Venezuela border
+   - Led teams of 180+ staff, budget negotiations with UN agencies
+   - Financial and narrative reporting to donor standards, compliance with external audits (BDO)
+3. AVSI Foundation — Regional Development Officer:
+   - Fundraising for Italian foundation HQ in Latin America
+   - Wrote and submitted 10+ approved proposals to USAID, EU, and UN
+   - Prepared annual Social Balance report at international level
+4. ERB Renewable Energies / Bahiagás — Intern:
+   - FP&A and Controlling support: SAP data entry, Excel reports, budget management, financial closing
+
+STYLE (follow the "Flink letter" approach):
+- Opening: Express excitement about the specific role and company. State your 8+ years of experience and current studies in one sentence.
+- Body: 2-3 paragraphs, each focusing on the most relevant experience for THIS role. Describe what you actually did — concrete responsibilities and skills, not vague claims. Connect your experience to what the company needs.
+- Closing: Mention you're in Berlin, finishing your Master's thesis, available for the position. Mention English, Portuguese, Spanish fluency. Express eagerness to contribute.
 
 RULES:
-- Keep it under 200 words
-- Be warm but professional — not generic
-- Reference the specific company and role
-- Highlight her international perspective and relevant academic background
-- Do NOT mention German skills — only mention English and Portuguese
-- End with enthusiasm about contributing to the team
+- Keep it 250-350 words — substantive but not excessive
+- Be warm, confident, and specific — not generic
+- Reference the specific company and role throughout
+- Select only the experience most relevant to the job description
+- Do NOT mention German skills
 - Write in proper paragraphs (not bullet points)
+- Do NOT fabricate experience — only use what is listed above
 """
 
 
@@ -44,7 +67,7 @@ def generate_cover_letter(job: Job, client: OpenAI | None = None) -> str:
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            max_tokens=400,
+            max_tokens=600,
             messages=[
                 {"role": "system", "content": LETTER_PROMPT},
                 {"role": "user", "content": (
@@ -72,7 +95,7 @@ def _format_full_letter(body: str, job: Job) -> str:
         f"Dear Hiring Team,\n\n"
         f"{body}\n\n"
         f"Best regards,\n"
-        f"Amane Dias"
+        f"Amane Aguiar Dias de Azevedo"
     )
 
 
