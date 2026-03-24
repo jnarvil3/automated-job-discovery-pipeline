@@ -135,6 +135,24 @@ def _try_email_apply(job: Job, candidate: dict, cover_letter: str,
         )
 
 
+def _try_personio_apply(job: Job, candidate: dict, cover_letter: str,
+                        resume_path: str, dry_run: bool,
+                        cover_letter_pdf: str = "") -> ApplicationResult | None:
+    """Try to apply via the Personio-specific browser handler."""
+    try:
+        from delivery.browser.personio import personio_apply
+        return personio_apply(job, candidate, cover_letter, resume_path,
+                              dry_run=dry_run, cover_letter_pdf=cover_letter_pdf)
+    except ImportError:
+        return None
+    except Exception as e:
+        return ApplicationResult(
+            success=False, method="browser_personio",
+            message=f"Personio apply failed: {e}",
+            response_data={"error": str(e)},
+        )
+
+
 def _try_browser_apply(job: Job, candidate: dict, cover_letter: str,
                        resume_path: str, dry_run: bool,
                        cover_letter_pdf: str = "") -> ApplicationResult | None:
@@ -235,7 +253,14 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
             result = _try_api_apply(job, candidate, job.cover_letter, resume_path,
                                     cover_letter_pdf=cover_letter_pdf)
 
-        # 2. Browser (if API didn't work or isn't available)
+        # 2a. Personio-specific browser handler
+        if (result is None or not result.success) and methods.get("browser", True) and job.ats_platform == "personio":
+            personio_result = _try_personio_apply(job, candidate, job.cover_letter, resume_path, dry_run,
+                                                   cover_letter_pdf=cover_letter_pdf)
+            if personio_result:
+                result = personio_result
+
+        # 2b. Generic browser (if API and Personio didn't work)
         if (result is None or not result.success) and methods.get("browser", True) and job.ats_platform:
             browser_result = _try_browser_apply(job, candidate, job.cover_letter, resume_path, dry_run,
                                                 cover_letter_pdf=cover_letter_pdf)
