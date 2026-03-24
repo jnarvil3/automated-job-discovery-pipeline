@@ -1,8 +1,8 @@
-name: Amane Dias
+name: Amane Aguiar Dias de Azevedo
 first_name: Amane
-last_name: Dias
-email: ""  # set via AMANE_EMAIL env var
-phone: ""  # set via AMANE_PHONE env var
+last_name: Dias de Azevedo
+email: amane.dias@gmail.com
+phone: "+49 17631120037"
 
 target_roles:
   - Working Student
@@ -33,23 +33,29 @@ constraints:
 
 # Structured candidate data for auto-apply form filling
 candidate:
-  headline: "International Master's Student | Finance & Sustainability"
+  headline: "Economist | Sustainable Finance | 8+ Years in Impact Investing & Consulting"
   linkedin_url: ""  # set via AMANE_LINKEDIN env var
-  current_location: "Germany"
+  current_location: "Berlin, Germany"
   nationality: "Brazilian"
   work_authorization: "Student visa — eligible for working student and internship positions"
 
   education:
-    - degree: "Master of Science"
-      field: ""  # fill in actual field
-      university: ""  # fill in actual university
-      graduation: "2026"
+    - degree: "Master of Arts"
+      field: "International and Development Economics"
+      university: "Hochschule für Technik und Wirtschaft Berlin (HTW Berlin)"
+      graduation: "December 2026"
+    - degree: "Bachelor of Arts"
+      field: "Economics"
+      university: "Federal University of Bahia"
+      graduation: "2019"
 
   languages:
-    - language: English
-      level: Fluent
     - language: Portuguese
       level: Native
+    - language: English
+      level: C2 (Proficient)
+    - language: Spanish
+      level: C2 (Proficient)
     - language: German
       level: A1 (Basic)
 
@@ -61,9 +67,10 @@ candidate:
     work_authorization: "Yes — student visa with work permission"
     hours_per_week: "15-20"
     german_fluency: "A1 — Basic level"
-    english_fluency: "Fluent"
+    english_fluency: "C2 — Proficient"
+    spanish_fluency: "C2 — Proficient"
     notice_period: "Immediately available"
-    years_of_experience: "0-1 (academic + internship experience)"
+    years_of_experience: "8+ (finance, impact investing, consulting, program management)"
 
   gender: ""  # optional, leave blank to skip
   how_did_you_hear: "Job board"
