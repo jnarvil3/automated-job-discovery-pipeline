@@ -4,7 +4,9 @@ Also detects ATS platforms and extracts application emails.
 """
 
 import re
+import time
 import urllib.request
+import urllib.error
 from html.parser import HTMLParser
 from core.models import Job
 from core.ats_detector import detect_ats
@@ -53,50 +55,66 @@ class TextExtractor(HTMLParser):
     def __init__(self):
         super().__init__()
         self.text_parts = []
-        self._skip = False
+        self._skip_depth = 0
         self._skip_tags = {"script", "style", "noscript", "header", "footer", "nav"}
 
     def handle_starttag(self, tag, attrs):
         if tag in self._skip_tags:
-            self._skip = True
+            self._skip_depth += 1
 
     def handle_endtag(self, tag):
-        if tag in self._skip_tags:
-            self._skip = False
+        if tag in self._skip_tags and self._skip_depth > 0:
+            self._skip_depth -= 1
 
     def handle_data(self, data):
-        if not self._skip:
+        if self._skip_depth == 0:
             self.text_parts.append(data)
 
     def get_text(self) -> str:
         return " ".join(self.text_parts)
 
 
-def fetch_full_description(url: str) -> tuple[str | None, str, str]:
+def fetch_full_description(url: str, max_retries: int = 3) -> tuple[str | None, str, str]:
     """
     Fetch a job URL and extract the visible text content.
+    Retries on timeouts and 5xx errors with exponential backoff.
 
     Returns:
         (text_content, final_url_after_redirects, raw_html)
     """
-    try:
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml",
-            "Accept-Language": "en-US,en;q=0.9",
-        })
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            final_url = resp.url  # URL after redirects
-            html = resp.read().decode("utf-8", errors="ignore")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
 
-        extractor = TextExtractor()
-        extractor.feed(html)
-        text = extractor.get_text()
-        # Clean up whitespace
-        text = re.sub(r"\s+", " ", text).strip()
-        return text[:5000], final_url, html
-    except Exception:
-        return None, url, ""
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                final_url = resp.url  # URL after redirects
+                html = resp.read().decode("utf-8", errors="ignore")
+
+            extractor = TextExtractor()
+            extractor.feed(html)
+            text = extractor.get_text()
+            # Clean up whitespace
+            text = re.sub(r"\s+", " ", text).strip()
+            return text[:5000], final_url, html
+        except urllib.error.HTTPError as e:
+            if e.code >= 500 and attempt < max_retries - 1:
+                time.sleep(2 * (attempt + 1))
+                continue
+            return None, url, ""
+        except (TimeoutError, urllib.error.URLError) as e:
+            if attempt < max_retries - 1:
+                time.sleep(2 * (attempt + 1))
+                continue
+            return None, url, ""
+        except Exception:
+            return None, url, ""
+
+    return None, url, ""
 
 
 def requires_german(text: str) -> tuple[bool, str]:

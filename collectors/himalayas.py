@@ -6,6 +6,9 @@ from core.models import Job
 
 API_BASE = "https://himalayas.app/jobs/api"
 
+# Role-type pre-filter — same keywords as arbeitnow
+ROLE_KEYWORDS = {"working student", "werkstudent", "intern", "internship", "praktikum"}
+
 # Searches targeting Amane's fields — Himalayas is remote-focused
 SEARCHES = [
     "finance",
@@ -38,6 +41,12 @@ class HimalayasCollector(BaseCollector):
                     link = item.get("applicationLink") or item.get("guid") or ""
                     if not link or link in seen_urls:
                         continue
+
+                    title = item.get("title", "Unknown")
+                    # Pre-filter: skip roles that don't match any role keyword
+                    if not any(kw in title.lower() for kw in ROLE_KEYWORDS):
+                        continue
+
                     seen_urls.add(link)
 
                     desc = item.get("excerpt") or item.get("description", "")
@@ -45,7 +54,7 @@ class HimalayasCollector(BaseCollector):
                     desc = re.sub(r"\s+", " ", desc).strip()
 
                     jobs.append(Job(
-                        title=item.get("title", "Unknown"),
+                        title=title,
                         company=item.get("companyName", "Unknown"),
                         location="Germany (Remote)",
                         description=desc[:2000],

@@ -311,6 +311,22 @@ async def _personio_apply(job: Job, candidate: dict, cover_letter: str,
             submitted = await _find_and_click(page, SUBMIT_SELECTORS)
             if submitted:
                 await page.wait_for_timeout(3000)
+
+                # Verify submission result
+                body_text = (await page.inner_text("body")).lower()
+                success_phrases = ["thank you", "received", "successfully", "submitted", "application has been"]
+                error_phrases = ["required", "error", "invalid", "please fill", "mandatory"]
+                has_success = any(p in body_text for p in success_phrases)
+                has_error = any(p in body_text for p in error_phrases)
+
+                if has_error and not has_success:
+                    await browser.close()
+                    return ApplicationResult(
+                        success=False, method="browser_personio",
+                        message="Form submit may have failed — error indicators found on page",
+                        response_data={"fields_filled": filled},
+                    )
+
                 await browser.close()
                 return ApplicationResult(
                     success=True, method="browser_personio",

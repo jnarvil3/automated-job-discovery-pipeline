@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from collectors.arbeitnow import ArbeitnowCollector
 from collectors.adzuna import AdzunaCollector
 from collectors.himalayas import HimalayasCollector
+from collectors.indeed_rss import IndeedRSSCollector
 from core.database import get_connection, job_exists, job_exists_by_title_company, save_job, get_todays_jobs
 from core.enricher import enrich_jobs, requires_german
 from core.scorer import score_jobs
@@ -36,12 +37,48 @@ def load_profile() -> dict:
         return yaml.safe_load(f)
 
 
+def validate_startup(profile: dict):
+    """Check critical config before running the pipeline. Exit early on fatal issues."""
+    project_root = Path(__file__).parent
+    errors = []
+    warnings = []
+
+    # Check resume file exists (resolve relative to project root)
+    resume_path = profile.get("resume_path", "")
+    if resume_path:
+        resolved = Path(resume_path) if Path(resume_path).is_absolute() else project_root / resume_path
+        if not resolved.exists():
+            errors.append(f"Resume file not found: {resolved}")
+        else:
+            # Store resolved absolute path back for use by the pipeline
+            profile["resume_path"] = str(resolved)
+    else:
+        errors.append("resume_path is not set in config/profile.yaml")
+
+    # Check OPENAI_API_KEY
+    if not os.environ.get("OPENAI_API_KEY"):
+        errors.append("OPENAI_API_KEY environment variable is not set (required for scoring and cover letters)")
+
+    # Warn if sender_email is empty
+    if not profile.get("sender_email"):
+        warnings.append("sender_email is empty in profile.yaml — auto-apply emails will use the Resend test domain")
+
+    for w in warnings:
+        print(f"  [WARN] {w}")
+    if errors:
+        for e in errors:
+            print(f"  [FATAL] {e}")
+        print("\nFix the above errors and re-run.")
+        sys.exit(1)
+
+
 def run():
     print("=" * 50)
     print(f"Amane's Job Pipeline — {date.today().isoformat()}")
     print("=" * 50)
 
     profile = load_profile()
+    validate_startup(profile)
     conn = get_connection()
 
     # --- Step 1: Collect from all sources ---
@@ -51,6 +88,7 @@ def run():
         ArbeitnowCollector(),
         AdzunaCollector(),
         HimalayasCollector(),
+        IndeedRSSCollector(profile.get("indeed_searches", [])),
     ]
 
     all_jobs = []

@@ -75,7 +75,7 @@ candidate:
   gender: ""  # optional, leave blank to skip
   how_did_you_hear: "Job board"
 
-resume_path: resume.pdf
+resume_path: docs_from_amane/Amane Dias_CV.pdf.pdf
 sender_email: ""  # Resend sender address for auto-apply emails
 
 # Auto-apply configuration

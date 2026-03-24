@@ -72,7 +72,21 @@ def build_digest(jobs: list[Job]) -> tuple[str, str]:
     parts.append("<hr>")
     parts.append("<p style='color: #888; font-size: 12px;'>Automated by Amane's Job Discovery Pipeline</p>")
 
-    body = "\n".join(parts)
+    inner = "\n".join(parts)
+    body = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: auto; padding: 16px; color: #333; }}
+a {{ color: #1a73e8; }}
+</style>
+</head>
+<body>
+{inner}
+</body>
+</html>"""
     return subject, body
 
 

@@ -82,12 +82,12 @@ def score_jobs(jobs: list[Job]) -> list[Job]:
 
         except (json.JSONDecodeError, KeyError, IndexError) as e:
             print(f"  [ERROR] Failed to parse score for {job.title}: {e}")
-            job.score = "MEDIUM"
-            job.score_reason = "Could not score automatically"
+            job.score = "LOW"
+            job.score_reason = "Scoring failed — could not parse response"
         except Exception as e:
             print(f"  [API ERROR] {job.title}: {e}")
-            job.score = "MEDIUM"
-            job.score_reason = "API error during scoring"
+            job.score = "LOW"
+            job.score_reason = "Scoring failed — API error"
 
     # Post-scoring: cap marketing-only roles at MEDIUM
     _marketing_kw = {"marketing", "social media", "content creator", "brand manager", "seo", "sem"}
@@ -96,9 +96,9 @@ def score_jobs(jobs: list[Job]) -> list[Job]:
     for job in jobs:
         if job.score != "HIGH":
             continue
-        combined = f"{job.title} {job.description[:500]}".lower()
-        is_marketing = any(kw in combined for kw in _marketing_kw)
-        is_core = any(kw in combined for kw in _core_fields)
+        title_lower = job.title.lower()
+        is_marketing = any(kw in title_lower for kw in _marketing_kw)
+        is_core = any(kw in f"{job.title} {job.description[:500]}".lower() for kw in _core_fields)
         if is_marketing and not is_core:
             job.score = "MEDIUM"
             job.score_reason = f"(Marketing-only — capped at MEDIUM) {job.score_reason}"

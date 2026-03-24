@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from core.models import Job
 
@@ -105,7 +105,7 @@ def log_application(conn: sqlite3.Connection, job_id: str, method: str, status: 
     conn.execute(
         """INSERT INTO applications (job_id, method, status, submitted_at, error_message, response_data)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (job_id, method, status, datetime.utcnow().isoformat(), error_message, response_data),
+        (job_id, method, status, datetime.now(timezone.utc).isoformat(), error_message, response_data),
     )
     conn.commit()
 

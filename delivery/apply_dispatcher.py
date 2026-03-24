@@ -213,6 +213,19 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
     failed = 0
     skipped = 0
 
+    # Per-company dedup: check which companies already have applications this week
+    applied_companies: set[str] = set()
+    try:
+        rows = conn.execute(
+            """SELECT DISTINCT LOWER(j.company) FROM applications a
+               JOIN jobs j ON a.job_id = j.id
+               WHERE a.status = 'success'
+               AND a.submitted_at >= date('now', '-7 days')""",
+        ).fetchall()
+        applied_companies = {r[0] for r in rows}
+    except Exception:
+        pass  # Table may not have data yet
+
     for job in eligible_jobs:
         if applied >= remaining:
             print(f"  [dispatcher] Rate limit reached — {len(eligible_jobs) - applied - failed - skipped} jobs queued for next run")
@@ -221,6 +234,13 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
 
         # Skip if already applied or exceeded retries
         if job.status in ("auto_applied", "applied"):
+            continue
+        # Per-company dedup: skip if we already applied to this company recently
+        company_key = job.company.strip().lower()
+        if company_key in applied_companies:
+            job.status = "apply_skipped_company_dup"
+            skipped += 1
+            print(f"  [{applied+1}/{min(len(eligible_jobs), remaining)}] {job.title} at {job.company} — SKIPPED (already applied to {job.company} this week)")
             continue
         if job.apply_attempts >= max_retries:
             job.status = "apply_failed"
@@ -279,6 +299,7 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
             job.apply_method = result.method
             job.apply_error = ""
             applied += 1
+            applied_companies.add(company_key)
             print(f"    -> {result.message}")
 
             # Log to applications table
