@@ -62,12 +62,12 @@ def generate_cover_letter(job: Job, client: OpenAI | None = None) -> str:
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             return ""
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, timeout=30)
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            max_tokens=600,
+            max_tokens=700,
             messages=[
                 {"role": "system", "content": LETTER_PROMPT},
                 {"role": "user", "content": (
@@ -75,7 +75,7 @@ def generate_cover_letter(job: Job, client: OpenAI | None = None) -> str:
                     f"Role: {job.title}\n"
                     f"Company: {job.company}\n"
                     f"Location: {job.location}\n"
-                    f"Description: {job.description[:800]}"
+                    f"Description: {job.description[:1500]}"
                 )},
             ],
         )
@@ -226,20 +226,20 @@ def _write_minimal_pdf(filepath: Path, text: str):
         "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj",
     ]
 
-    with open(filepath, "w") as f:
-        f.write("%PDF-1.4\n")
+    with open(filepath, "wb") as f:
+        f.write(b"%PDF-1.4\n")
         offsets = []
         for obj in objects:
             offsets.append(f.tell())
-            f.write(obj + "\n")
+            f.write(obj.encode("latin-1", errors="replace") + b"\n")
         xref_pos = f.tell()
-        f.write("xref\n")
-        f.write(f"0 {len(objects) + 1}\n")
-        f.write("0000000000 65535 f \n")
+        f.write(b"xref\n")
+        f.write(f"0 {len(objects) + 1}\n".encode())
+        f.write(b"0000000000 65535 f \n")
         for off in offsets:
-            f.write(f"{off:010d} 00000 n \n")
-        f.write("trailer\n")
-        f.write(f"<< /Size {len(objects) + 1} /Root 1 0 R >>\n")
-        f.write("startxref\n")
-        f.write(f"{xref_pos}\n")
-        f.write("%%EOF\n")
+            f.write(f"{off:010d} 00000 n \n".encode())
+        f.write(b"trailer\n")
+        f.write(f"<< /Size {len(objects) + 1} /Root 1 0 R >>\n".encode())
+        f.write(b"startxref\n")
+        f.write(f"{xref_pos}\n".encode())
+        f.write(b"%%EOF\n")

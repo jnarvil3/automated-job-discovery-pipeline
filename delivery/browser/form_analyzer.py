@@ -133,7 +133,7 @@ def _map_with_gpt(raw_fields: list[dict], candidate: dict, cover_letter: str,
                   job: Job, api_key: str) -> list[FormField]:
     """Use GPT-4o-mini to map candidate data to form fields."""
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=30)
 
     fields_desc = json.dumps(raw_fields, indent=2)
     candidate_desc = json.dumps({

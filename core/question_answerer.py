@@ -53,7 +53,7 @@ def answer_questions(questions: list[dict], candidate: dict, job: Job) -> dict:
     if not api_key:
         return _answer_from_config(questions, candidate)
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key, timeout=30)
 
     # Format questions for GPT
     q_text = f"Job: {job.title} at {job.company} ({job.location})\n\nScreening questions:\n"

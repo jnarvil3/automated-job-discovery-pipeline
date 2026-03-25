@@ -55,7 +55,7 @@ def score_jobs(jobs: list[Job]) -> list[Job]:
     if not jobs:
         return jobs
 
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=30)
 
     for job in jobs:
         try:
