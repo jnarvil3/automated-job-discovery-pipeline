@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 
 from core.models import Job
 from core.rate_limiter import remaining_applications_today
+from core.database import log_application
 from core.question_answerer import answer_questions
 from delivery.cover_letter import generate_cover_letter, generate_cover_letter_pdf, generate_cover_letter_docx
 from delivery.ats.base import ApplicationResult
@@ -313,7 +314,6 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
             log.info("-> %s", result.message)
 
             # Log to applications table
-            from core.database import log_application
             log_application(conn, job.id, result.method, "success",
                           response_data=json.dumps(result.response_data))
 
@@ -328,7 +328,6 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
                 failed += 1
             log.error("-> FAILED: %s", result.message)
 
-            from core.database import log_application
             log_application(conn, job.id, result.method, "failed",
                           error_message=result.message,
                           response_data=json.dumps(result.response_data))

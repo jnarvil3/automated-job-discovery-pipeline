@@ -90,162 +90,160 @@ def run():
     profile = load_profile()
     validate_startup(profile)
     conn = get_connection()
+    try:
+        # --- Step 1: Collect from all sources ---
+        log.info("Collecting jobs...")
 
-    # --- Step 1: Collect from all sources ---
-    log.info("Collecting jobs...")
+        collectors = [
+            ArbeitnowCollector(),
+            AdzunaCollector(),
+            HimalayasCollector(),
+            IndeedRSSCollector(profile.get("indeed_searches", [])),
+        ]
 
-    collectors = [
-        ArbeitnowCollector(),
-        AdzunaCollector(),
-        HimalayasCollector(),
-        IndeedRSSCollector(profile.get("indeed_searches", [])),
-    ]
+        all_jobs = []
+        for collector in collectors:
+            try:
+                all_jobs.extend(collector.collect())
+            except Exception as e:
+                log.error("%s failed: %s", collector.__class__.__name__, e)
 
-    all_jobs = []
-    for collector in collectors:
-        try:
-            all_jobs.extend(collector.collect())
-        except Exception as e:
-            log.error("%s failed: %s", collector.__class__.__name__, e)
+        log.info("Total collected: %d", len(all_jobs))
 
-    log.info("Total collected: %d", len(all_jobs))
+        # --- Step 2: Deduplicate ---
+        log.info("Deduplicating...")
+        new_jobs = []
+        seen_title_company: set[tuple[str, str]] = set()
+        for job in all_jobs:
+            key = (job.title.strip().lower(), job.company.strip().lower())
+            if job_exists(conn, job):
+                continue
+            if job_exists_by_title_company(conn, job.title, job.company):
+                continue
+            if key in seen_title_company:
+                continue
+            seen_title_company.add(key)
+            new_jobs.append(job)
 
-    # --- Step 2: Deduplicate ---
-    log.info("Deduplicating...")
-    new_jobs = []
-    seen_title_company: set[tuple[str, str]] = set()
-    for job in all_jobs:
-        key = (job.title.strip().lower(), job.company.strip().lower())
-        if job_exists(conn, job):
-            continue
-        if job_exists_by_title_company(conn, job.title, job.company):
-            continue
-        if key in seen_title_company:
-            continue
-        seen_title_company.add(key)
-        new_jobs.append(job)
+        log.info("New jobs: %d (skipped %d duplicates)", len(new_jobs), len(all_jobs) - len(new_jobs))
 
-    log.info("New jobs: %d (skipped %d duplicates)", len(new_jobs), len(all_jobs) - len(new_jobs))
+        if not new_jobs:
+            log.info("No new jobs today. Done.")
+            return
 
-    if not new_jobs:
-        log.info("No new jobs today. Done.")
-        conn.close()
-        return
-
-    # --- Step 2.5: Quick filter — remove posts written entirely in German ---
-    log.info("Quick filter: removing German-language postings...")
-    english_jobs = []
-    german_count = 0
-    for job in new_jobs:
-        text = f"{job.title} {job.description}"
-        try:
-            lang = detect(text)
-        except LangDetectException:
-            lang = "unknown"
-        if lang == "de":
-            german_count += 1
-            job.score = "LOW"
-            job.score_reason = "Auto-rejected: job posting is in German"
-            save_job(conn, job)
-        else:
-            english_jobs.append(job)
-    log.info("Removed %d German-language jobs, %d remaining", german_count, len(english_jobs))
-
-    if not english_jobs:
-        log.info("No English-language jobs today. Done.")
-        conn.close()
-        return
-
-    # --- Step 3: Fetch full descriptions + check for German requirements ---
-    log.info("Fetching full job descriptions & checking German requirements...")
-    enriched_jobs, german_required = enrich_jobs(english_jobs)
-
-    # Save German-required jobs as LOW
-    for job in german_required:
-        save_job(conn, job)
-    log.info("Passed: %d | Rejected (German required): %d", len(enriched_jobs), len(german_required))
-
-    if not enriched_jobs:
-        log.info("No jobs passed language filter. Done.")
-        conn.close()
-        return
-
-    # --- Step 4: Score ---
-    log.info("Scoring %d jobs with GPT-4o-mini...", len(enriched_jobs))
-    scored_jobs = score_jobs(enriched_jobs)
-
-    # --- Step 4.5: Hard German filter (safety net after AI scoring) ---
-    log.info("Post-scoring German filter...")
-    german_caught = 0
-    for job in scored_jobs:
-        if job.score in ("HIGH", "MEDIUM"):
-            is_german, reason = requires_german(f"{job.title} {job.description}")
-            if is_german:
+        # --- Step 2.5: Quick filter — remove posts written entirely in German ---
+        log.info("Quick filter: removing German-language postings...")
+        english_jobs = []
+        german_count = 0
+        for job in new_jobs:
+            text = f"{job.title} {job.description}"
+            try:
+                lang = detect(text)
+            except LangDetectException:
+                lang = "unknown"
+            if lang == "de":
+                german_count += 1
                 job.score = "LOW"
-                job.score_reason = f"Post-score rejection: {reason}"
-                german_caught += 1
-    if german_caught:
-        log.info("Caught %d German-requirement jobs that slipped through scoring", german_caught)
+                job.score_reason = "Auto-rejected: job posting is in German"
+                save_job(conn, job)
+            else:
+                english_jobs.append(job)
+        log.info("Removed %d German-language jobs, %d remaining", german_count, len(english_jobs))
 
-    # --- Step 5: Tier assignment ---
-    # TOP tier: best 2-3 HIGH jobs with fit_score >= 7
-    MIN_HIGH_FIT = 7
-    TOP_N = 3
-    high = [j for j in scored_jobs if j.score == "HIGH" and j.fit_score >= MIN_HIGH_FIT]
-    high.sort(key=lambda j: j.fit_score, reverse=True)
+        if not english_jobs:
+            log.info("No English-language jobs today. Done.")
+            return
 
-    # Demote HIGH jobs beyond top N, or those below fit threshold
-    weak_highs = [j for j in scored_jobs if j.score == "HIGH" and j.fit_score < MIN_HIGH_FIT]
-    for job in weak_highs:
-        job.score = "MEDIUM"
-        job.score_reason = f"(Fit {job.fit_score}/10 — below threshold) {job.score_reason}"
-    for job in high[TOP_N:]:
-        job.score = "MEDIUM"
-        job.score_reason = f"(Demoted from TOP — fit {job.fit_score}/10) {job.score_reason}"
+        # --- Step 3: Fetch full descriptions + check for German requirements ---
+        log.info("Fetching full job descriptions & checking German requirements...")
+        enriched_jobs, german_required = enrich_jobs(english_jobs)
 
-    high = high[:TOP_N]
-    medium = [j for j in scored_jobs if j.score == "MEDIUM"]
-    low = [j for j in scored_jobs if j.score == "LOW"]
-    log.info("TOP %d | MEDIUM: %d | LOW: %d", len(high), len(medium), len(low))
+        # Save German-required jobs as LOW
+        for job in german_required:
+            save_job(conn, job)
+        log.info("Passed: %d | Rejected (German required): %d", len(enriched_jobs), len(german_required))
 
-    # --- Step 5.1: Generate cover letters for HIGH-tier jobs ---
-    if high:
-        log.info("Generating cover letters for %d TOP jobs...", len(high))
-        for job in high:
-            if not job.cover_letter:
-                job.cover_letter = generate_cover_letter(job)
-                if job.cover_letter:
-                    log.info("  Cover letter: %s at %s", job.title, job.company)
+        if not enriched_jobs:
+            log.info("No jobs passed language filter. Done.")
+            return
 
-    # --- Step 5.5: Auto-apply ---
-    log.info("Auto-applying...")
-    dry_run = "--send" not in sys.argv
-    scored_jobs = apply_to_jobs(scored_jobs, profile, conn, dry_run=dry_run)
+        # --- Step 4: Score ---
+        log.info("Scoring %d jobs with GPT-4o-mini...", len(enriched_jobs))
+        scored_jobs = score_jobs(enriched_jobs)
 
-    # --- Step 6: Save ---
-    log.info("Saving to database...")
-    for job in scored_jobs:
-        save_job(conn, job)
+        # --- Step 4.5: Hard German filter (safety net after AI scoring) ---
+        log.info("Post-scoring German filter...")
+        german_caught = 0
+        for job in scored_jobs:
+            if job.score in ("HIGH", "MEDIUM"):
+                is_german, reason = requires_german(f"{job.title} {job.description}")
+                if is_german:
+                    job.score = "LOW"
+                    job.score_reason = f"Post-score rejection: {reason}"
+                    german_caught += 1
+        if german_caught:
+            log.info("Caught %d German-requirement jobs that slipped through scoring", german_caught)
 
-    # --- Step 7: Send digest ---
-    log.info("Sending digest...")
-    recipient = profile.get("email") or os.environ.get("AMANE_EMAIL", "")
+        # --- Step 5: Tier assignment ---
+        # TOP tier: best 2-3 HIGH jobs with fit_score >= 7
+        MIN_HIGH_FIT = 7
+        TOP_N = 3
+        high = [j for j in scored_jobs if j.score == "HIGH" and j.fit_score >= MIN_HIGH_FIT]
+        high.sort(key=lambda j: j.fit_score, reverse=True)
 
-    relevant_jobs = [j for j in scored_jobs if j.score in ("HIGH", "MEDIUM")]
+        # Demote HIGH jobs beyond top N, or those below fit threshold
+        weak_highs = [j for j in scored_jobs if j.score == "HIGH" and j.fit_score < MIN_HIGH_FIT]
+        for job in weak_highs:
+            job.score = "MEDIUM"
+            job.score_reason = f"(Fit {job.fit_score}/10 — below threshold) {job.score_reason}"
+        for job in high[TOP_N:]:
+            job.score = "MEDIUM"
+            job.score_reason = f"(Demoted from TOP — fit {job.fit_score}/10) {job.score_reason}"
 
-    if not relevant_jobs:
-        log.info("No HIGH or MEDIUM jobs today — skipping email.")
-    elif not recipient:
-        log.warning("No recipient email configured — printing to stdout")
-        send_digest(relevant_jobs, "")
-    elif "--send" in sys.argv:
-        send_digest(relevant_jobs, recipient)
-    else:
-        log.info("[DRY RUN] Use --send to actually email. Printing to stdout:")
-        send_digest(relevant_jobs, "")
+        high = high[:TOP_N]
+        medium = [j for j in scored_jobs if j.score == "MEDIUM"]
+        low = [j for j in scored_jobs if j.score == "LOW"]
+        log.info("TOP %d | MEDIUM: %d | LOW: %d", len(high), len(medium), len(low))
 
-    conn.close()
-    log.info("Done.")
+        # --- Step 5.1: Generate cover letters for HIGH-tier jobs ---
+        if high:
+            log.info("Generating cover letters for %d TOP jobs...", len(high))
+            for job in high:
+                if not job.cover_letter:
+                    job.cover_letter = generate_cover_letter(job)
+                    if job.cover_letter:
+                        log.info("  Cover letter: %s at %s", job.title, job.company)
+
+        # --- Step 5.5: Auto-apply ---
+        log.info("Auto-applying...")
+        dry_run = "--send" not in sys.argv
+        scored_jobs = apply_to_jobs(scored_jobs, profile, conn, dry_run=dry_run)
+
+        # --- Step 6: Save ---
+        log.info("Saving to database...")
+        for job in scored_jobs:
+            save_job(conn, job)
+
+        # --- Step 7: Send digest ---
+        log.info("Sending digest...")
+        recipient = profile.get("email") or os.environ.get("AMANE_EMAIL", "")
+
+        relevant_jobs = [j for j in scored_jobs if j.score in ("HIGH", "MEDIUM")]
+
+        if not relevant_jobs:
+            log.info("No HIGH or MEDIUM jobs today — skipping email.")
+        elif not recipient:
+            log.warning("No recipient email configured — printing to stdout")
+            send_digest(relevant_jobs, "")
+        elif "--send" in sys.argv:
+            send_digest(relevant_jobs, recipient)
+        else:
+            log.info("[DRY RUN] Use --send to actually email. Printing to stdout:")
+            send_digest(relevant_jobs, "")
+
+        log.info("Done.")
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

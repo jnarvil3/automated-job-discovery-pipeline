@@ -12,7 +12,7 @@ from core.models import Job
 SYSTEM_PROMPT = """You answer job application screening questions for a specific candidate. You must answer HONESTLY — never fabricate qualifications or experience.
 
 CANDIDATE PROFILE:
-- Name: Amane Dias
+- Name: Amane Aguiar Dias de Azevedo
 - Nationality: Brazilian
 - Status: International master's student in Germany, finishing thesis this semester
 - Work authorization: Student visa — eligible for working student (15-20h/week) and internship
