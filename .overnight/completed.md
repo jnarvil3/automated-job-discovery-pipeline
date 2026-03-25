@@ -36,3 +36,24 @@
 - [x] Added per-company dedup in apply_dispatcher (max 1 app per company per 7 days)
 - [x] Refined marketing cap: only triggers when marketing keyword is in job title, not description
 - [x] Replaced deprecated datetime.utcnow() with datetime.now(timezone.utc)
+
+## Cycle 3
+
+### Priority 3: Review Feedback (Cycle 2) — All items addressed
+
+**Critical fixes (commit 6155cfd):**
+- [x] C1: Fixed question answerer experience lie — now says "8+ years" instead of "0-1"
+- [x] C2: HIGH-tier jobs now get cover letters generated before auto-apply step
+- [x] C3: Email sender reads SENDER_EMAIL from env; refuses to send from test domain if not configured
+
+**High priority (commits 2cfdfd6, a100742):**
+- [x] H1: Cover letter generator now sees 1500 chars of description (matching scorer) instead of 800; max_tokens bumped to 700
+- [x] H2: Added timeout=30 to all OpenAI client constructors (scorer, cover letter, question answerer, form analyzer)
+- [x] H3: Added 4 apply_dispatcher tests: per-company dedup, rate limit, dry run, quick_apply (38 tests total, all passing)
+- [x] H4: Fixed _write_minimal_pdf to binary mode ("wb") with proper byte encoding
+
+**Medium priority (commit 53b68f6):**
+- [x] M1: Updated browser user agent from Chrome 120 to Chrome 131 in engine, personio, and enricher
+- [x] M5: Added 8+ years experience context to scorer prompt to prevent incorrect LOW scoring
+- [x] M6: Made langdetect deterministic with DetectorFactory.seed = 0
+- [x] M2: Added Adzuna pagination (pages 1-3 per search), roughly tripling coverage
