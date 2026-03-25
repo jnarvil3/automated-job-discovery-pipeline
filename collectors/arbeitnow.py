@@ -1,6 +1,5 @@
-import urllib.request
 import urllib.parse
-import json
+import requests
 from collectors.base import BaseCollector
 from core.models import Job
 
@@ -37,15 +36,17 @@ class ArbeitnowCollector(BaseCollector):
     def collect(self) -> list[Job]:
         jobs: list[Job] = []
         seen_urls: set[str] = set()
+        session = requests.Session()
+        session.headers["User-Agent"] = "AmaneJobBot/1.0"
 
         for query in SEARCHES:
             encoded_query = urllib.parse.quote(query)
             for page in range(1, 4):  # pages 1-3 per query
                 try:
                     url = f"{API_URL}?search={encoded_query}&page={page}"
-                    req = urllib.request.Request(url, headers={"User-Agent": "AmaneJobBot/1.0"})
-                    with urllib.request.urlopen(req, timeout=15) as resp:
-                        data = json.loads(resp.read().decode())
+                    resp = session.get(url, timeout=15)
+                    resp.raise_for_status()
+                    data = resp.json()
                 except Exception as e:
                     print(f"[arbeitnow] Error for '{query}' page {page}: {e}")
                     break

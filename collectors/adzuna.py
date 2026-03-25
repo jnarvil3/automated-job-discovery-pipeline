@@ -1,8 +1,7 @@
-import urllib.request
 import urllib.parse
-import json
 import os
 import re
+import requests
 from collectors.base import BaseCollector
 from core.models import Job
 
@@ -40,15 +39,17 @@ class AdzunaCollector(BaseCollector):
 
         jobs: list[Job] = []
         seen_urls: set[str] = set()
+        session = requests.Session()
+        session.headers["User-Agent"] = "AmaneJobBot/1.0"
 
         for query in SEARCHES:
             encoded_query = urllib.parse.quote(query)
             for page in range(1, 4):  # pages 1-3
                 try:
                     url = f"{API_BASE}/{page}?app_id={self.app_id}&app_key={self.app_key}&what={encoded_query}&results_per_page=20"
-                    req = urllib.request.Request(url, headers={"User-Agent": "AmaneJobBot/1.0"})
-                    with urllib.request.urlopen(req, timeout=15) as resp:
-                        data = json.loads(resp.read().decode())
+                    resp = session.get(url, timeout=15)
+                    resp.raise_for_status()
+                    data = resp.json()
 
                     results = data.get("results", [])
                     if not results:
