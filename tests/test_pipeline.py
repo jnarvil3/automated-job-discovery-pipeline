@@ -478,3 +478,117 @@ class TestFullPipelineFlow:
         assert row[0] == 3  # 2 English + 1 German-rejected
 
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Apply dispatcher tests
+# ---------------------------------------------------------------------------
+
+class TestApplyDispatcher:
+    """Tests for delivery/apply_dispatcher.py logic."""
+
+    def _make_profile(self) -> dict:
+        return {
+            "first_name": "Amane",
+            "last_name": "Dias",
+            "email": "amane@test.com",
+            "resume_path": "",
+            "sender_email": "jobs@test.com",
+            "auto_apply": {
+                "enabled": True,
+                "tiers": ["MEDIUM"],
+                "max_per_day": 5,
+                "max_retries": 3,
+                "methods": {"api": False, "browser": False, "email": False},
+            },
+            "candidate": {
+                "screening_answers": {},
+            },
+        }
+
+    def test_per_company_dedup_skips_second_application(self):
+        """Second application to same company within 7 days is skipped."""
+        from delivery.apply_dispatcher import apply_to_jobs
+
+        conn = _in_memory_db()
+        profile = self._make_profile()
+
+        # First job at CompanyA — already applied (in DB)
+        job_a1 = _make_job(title="WS Finance", company="CompanyA",
+                           url="https://a.com/1", source="adzuna")
+        job_a1.score = "MEDIUM"
+        save_job(conn, job_a1)
+        log_application(conn, job_a1.id, "api_greenhouse", "success")
+
+        # Second job at CompanyA — should be skipped
+        job_a2 = _make_job(title="WS Controlling", company="CompanyA",
+                           url="https://a.com/2", source="adzuna")
+        job_a2.score = "MEDIUM"
+
+        result = apply_to_jobs([job_a2], profile, conn, dry_run=True)
+        assert result[0].status == "apply_skipped_company_dup"
+        conn.close()
+
+    def test_rate_limit_stops_applying(self):
+        """After budget is exhausted, remaining jobs are queued."""
+        from delivery.apply_dispatcher import apply_to_jobs
+        from datetime import date
+
+        conn = _in_memory_db()
+        profile = self._make_profile()
+        profile["auto_apply"]["max_per_day"] = 1
+
+        # Pre-fill 1 application today to exhaust budget
+        existing = _make_job(title="Already Applied", company="OldCo",
+                             url="https://old.com/1")
+        existing.score = "MEDIUM"
+        existing.status = "auto_applied"
+        save_job(conn, existing)
+        conn.execute(
+            "INSERT INTO applications (job_id, method, status, submitted_at) VALUES (?, ?, ?, ?)",
+            (existing.id, "api", "success", date.today().isoformat()),
+        )
+        conn.commit()
+
+        # New job should be queued, not applied
+        new_job = _make_job(title="WS Finance", company="NewCo",
+                            url="https://new.com/1")
+        new_job.score = "MEDIUM"
+
+        result = apply_to_jobs([new_job], profile, conn, dry_run=True)
+        assert result[0].status == "queued"
+        conn.close()
+
+    def test_dry_run_returns_success_without_submitting(self):
+        """In dry_run mode with no methods enabled, job gets marked quick_apply."""
+        from delivery.apply_dispatcher import apply_to_jobs
+
+        conn = _in_memory_db()
+        profile = self._make_profile()
+
+        job = _make_job(title="WS Finance", company="TestCo",
+                        url="https://test.com/1")
+        job.score = "MEDIUM"
+
+        with patch("delivery.apply_dispatcher.generate_cover_letter", return_value="Test letter"):
+            result = apply_to_jobs([job], profile, conn, dry_run=True)
+
+        # No methods enabled → quick_apply
+        assert result[0].status == "quick_apply"
+        conn.close()
+
+    def test_no_apply_method_marks_quick_apply(self):
+        """When no apply method is available, job is marked quick_apply."""
+        from delivery.apply_dispatcher import apply_to_jobs
+
+        conn = _in_memory_db()
+        profile = self._make_profile()
+
+        job = _make_job(title="WS Sustainability", company="GreenCo",
+                        url="https://green.com/1")
+        job.score = "MEDIUM"
+        job.cover_letter = "Pre-existing cover letter"
+
+        result = apply_to_jobs([job], profile, conn, dry_run=True)
+        assert result[0].status == "quick_apply"
+        conn.close()
