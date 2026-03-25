@@ -82,3 +82,24 @@
 - [x] M6: Passed score_reason to cover letter generator prompt for more targeted letters (commit ad16bc1)
 
 **Test status:** 45 tests, all passing.
+
+## Cycle 5
+
+### Priority 3: Review Feedback (Cycle 4) — All items addressed
+
+**Critical fixes (commit fd1dded):**
+- [x] C1: HTML-escaped job.title, job.company, job.location, job.score_reason, and job.url in email digest _job_card() — German company names with & and score reasons with special characters no longer break HTML
+- [x] C2: Migrated core/enricher.py from print() to structured logging; removed print(..., end=" ") pattern that spliced into other log lines
+
+**High priority fixes (commits dcbc651, bc7b7b4):**
+- [x] H1: Fixed hardcoded name "Amane Dias" to "Amane Aguiar Dias de Azevedo" in question_answerer.py system prompt
+- [x] H2: Completed logging migration for all 12 remaining modules: 4 collectors, cover_letter, browser/engine, browser/personio, browser/form_analyzer, 3 ATS integrations, question_answerer — zero print() calls remain
+- [x] H3: Wrapped main.py pipeline body in try/finally to guarantee conn.close() on unhandled exceptions; removed redundant conn.close() from 3 early-return paths
+- [x] H4: Moved log_application import from inside loop body to module level in apply_dispatcher.py
+
+**Medium priority (commit b37df0f):**
+- [x] M1: Added TestEmailDigest class with 3 tests: HTML escaping special characters, auto-applied categorization, empty job list handling
+- [x] M2: Added TestHimalayasCollector (3 tests: parsing, role keyword filtering, empty response) and TestIndeedRSSCollector (3 tests: feed parsing, URL dedup, empty feed)
+- [x] M3: Added cover letter generation failure check in apply_dispatcher — jobs without a cover letter are now marked quick_apply instead of submitting empty applications
+
+**Test status:** 54 tests, all passing.
