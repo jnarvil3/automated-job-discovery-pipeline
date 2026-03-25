@@ -85,11 +85,21 @@ def job_exists_by_title_company(conn: sqlite3.Connection, title: str, company: s
 
 def save_job(conn: sqlite3.Connection, job: Job):
     conn.execute(
-        """INSERT OR REPLACE INTO jobs
+        """INSERT INTO jobs
            (id, source, title, company, location, description, url, score, fit_score,
             score_reason, cover_letter, found_date, status, apply_email,
             ats_platform, ats_job_id, ats_board_token, apply_method, apply_attempts, apply_error)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+               score = excluded.score,
+               fit_score = excluded.fit_score,
+               score_reason = excluded.score_reason,
+               description = excluded.description,
+               cover_letter = CASE WHEN excluded.cover_letter != '' THEN excluded.cover_letter ELSE jobs.cover_letter END,
+               status = CASE WHEN excluded.status NOT IN ('new', '') THEN excluded.status ELSE jobs.status END,
+               apply_method = CASE WHEN excluded.apply_method != '' THEN excluded.apply_method ELSE jobs.apply_method END,
+               apply_attempts = MAX(excluded.apply_attempts, jobs.apply_attempts),
+               apply_error = CASE WHEN excluded.apply_error != '' THEN excluded.apply_error ELSE jobs.apply_error END""",
         (job.id, job.source, job.title, job.company, job.location, job.description,
          job.url, job.score, job.fit_score, job.score_reason, job.cover_letter,
          job.found_date, job.status, job.apply_email,
