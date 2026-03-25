@@ -1,7 +1,10 @@
+import logging
 import feedparser
 import re
 from collectors.base import BaseCollector
 from core.models import Job
+
+log = logging.getLogger(__name__)
 
 
 class IndeedRSSCollector(BaseCollector):
@@ -35,9 +38,9 @@ class IndeedRSSCollector(BaseCollector):
                         source="indeed",
                     ))
             except Exception as e:
-                print(f"[indeed] Error fetching {url}: {e}")
+                log.warning("Error fetching %s: %s", url, e)
 
-        print(f"[indeed] Collected {len(jobs)} jobs from {len(self.feed_urls)} feeds")
+        log.info("Collected %d jobs from %d feeds", len(jobs), len(self.feed_urls))
         return jobs
 
     def _extract_company(self, entry) -> str:

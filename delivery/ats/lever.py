@@ -7,6 +7,7 @@ Rate limit: 2 requests/second.
 """
 
 import json
+import logging
 import time
 import urllib.request
 import urllib.parse
@@ -14,6 +15,8 @@ from io import BytesIO
 from pathlib import Path
 from core.models import Job
 from delivery.ats.base import ATSApplicant, ApplicationResult
+
+log = logging.getLogger(__name__)
 
 
 class LeverApplicant(ATSApplicant):
@@ -33,7 +36,7 @@ class LeverApplicant(ATSApplicant):
             # Lever returns questions in the 'lists' field
             return data.get("lists", [])
         except Exception as e:
-            print(f"    [lever] Failed to fetch posting details: {e}")
+            log.warning("Failed to fetch posting details: %s", e)
             return []
 
     def submit(self, job: Job, candidate: dict, cover_letter: str,

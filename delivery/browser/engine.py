@@ -7,6 +7,7 @@ Handles multi-step forms, file uploads, and CAPTCHA detection.
 
 import asyncio
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -16,6 +17,8 @@ from core.models import Job
 from delivery.ats.base import ApplicationResult
 from delivery.browser.captcha_detector import has_captcha
 from delivery.browser.form_analyzer import extract_and_map_fields, FormField
+
+log = logging.getLogger(__name__)
 
 
 SCREENSHOTS_DIR = Path(__file__).parent.parent.parent / "screenshots"
@@ -52,7 +55,7 @@ async def _apply_with_browser(job: Job, candidate: dict, cover_letter: str,
 
         try:
             # Navigate to job page
-            print(f"    [browser] Navigating to {job.url}")
+            log.info("Navigating to %s", job.url)
             await page.goto(job.url, wait_until="domcontentloaded", timeout=15000)
             await page.wait_for_timeout(2000)  # Let JS render
 
@@ -97,7 +100,7 @@ async def _apply_with_browser(job: Job, candidate: dict, cover_letter: str,
 
             # Fill the form fields
             filled_count = await _fill_fields(page, fields, resume_path, cover_letter_pdf)
-            print(f"    [browser] Filled {filled_count}/{len(fields)} fields")
+            log.info("Filled %d/%d fields", filled_count, len(fields))
 
             # Handle multi-step forms (up to 5 steps)
             for step in range(5):
@@ -117,7 +120,7 @@ async def _apply_with_browser(job: Job, candidate: dict, cover_letter: str,
                 new_fields = await extract_and_map_fields(page, candidate, cover_letter, job)
                 if new_fields:
                     filled = await _fill_fields(page, new_fields, resume_path, cover_letter_pdf)
-                    print(f"    [browser] Step {step + 2}: filled {filled} more fields")
+                    log.info("Step %d: filled %d more fields", step + 2, filled)
 
             # Take pre-submit screenshot
             screenshot_path = _screenshot_path(job, "pre_submit")

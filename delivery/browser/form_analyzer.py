@@ -6,10 +6,13 @@ to map candidate data to each field.
 """
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 
 from core.models import Job
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -208,7 +211,7 @@ Job context: {job.title} at {job.company}"""
         return result
 
     except Exception as e:
-        print(f"    [form_analyzer] GPT mapping failed: {e} — falling back to keywords")
+        log.warning("GPT mapping failed: %s — falling back to keywords", e)
         return _map_with_keywords(raw_fields, candidate, cover_letter)
 
 

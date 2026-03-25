@@ -14,11 +14,14 @@ Typical Personio form structure:
 """
 
 import asyncio
+import logging
 from pathlib import Path
 
 from core.models import Job
 from delivery.ats.base import ApplicationResult
 from delivery.browser.captcha_detector import has_captcha
+
+log = logging.getLogger(__name__)
 
 
 # Personio-specific selectors (based on their standard career page templates)
@@ -195,7 +198,7 @@ async def _personio_apply(job: Job, candidate: dict, cover_letter: str,
 
         try:
             # Navigate to job page
-            print(f"    [personio] Navigating to {job.url}")
+            log.info("Navigating to %s", job.url)
             await page.goto(job.url, wait_until="domcontentloaded", timeout=15000)
             await page.wait_for_timeout(2000)
 
@@ -214,7 +217,7 @@ async def _personio_apply(job: Job, candidate: dict, cover_letter: str,
                 await page.wait_for_timeout(2000)
             else:
                 # Some Personio pages show the form inline — continue anyway
-                print("    [personio] No apply button found — form may be inline")
+                log.info("No apply button found — form may be inline")
 
             # CAPTCHA check after clicking apply
             if await has_captcha(page):
@@ -289,7 +292,7 @@ async def _personio_apply(job: Job, candidate: dict, cover_letter: str,
             # Check GDPR consent
             await _check_consent(page)
 
-            print(f"    [personio] Filled {filled} fields")
+            log.info("Filled %d fields", filled)
 
             if filled == 0:
                 await browser.close()

@@ -5,11 +5,14 @@ Uses the public apply endpoint available on Workable-hosted career pages.
 """
 
 import json
+import logging
 import urllib.request
 from pathlib import Path
 import base64
 from core.models import Job
 from delivery.ats.base import ATSApplicant, ApplicationResult
+
+log = logging.getLogger(__name__)
 
 
 class WorkableApplicant(ATSApplicant):
@@ -30,7 +33,7 @@ class WorkableApplicant(ATSApplicant):
                 data = json.loads(resp.read().decode())
             return data.get("questions", [])
         except Exception as e:
-            print(f"    [workable] Failed to fetch questions: {e}")
+            log.warning("Failed to fetch questions: %s", e)
             return []
 
     def submit(self, job: Job, candidate: dict, cover_letter: str,

@@ -6,12 +6,15 @@ Public board API — no auth required for most boards.
 """
 
 import json
+import logging
 import urllib.request
 import urllib.parse
 from io import BytesIO
 from pathlib import Path
 from core.models import Job
 from delivery.ats.base import ATSApplicant, ApplicationResult
+
+log = logging.getLogger(__name__)
 
 
 API_BASE = "https://boards-api.greenhouse.io/v1/boards"
@@ -32,7 +35,7 @@ class GreenhouseApplicant(ATSApplicant):
                 data = json.loads(resp.read().decode())
             return data.get("questions", [])
         except Exception as e:
-            print(f"    [greenhouse] Failed to fetch questions: {e}")
+            log.warning("Failed to fetch questions: %s", e)
             return []
 
     def submit(self, job: Job, candidate: dict, cover_letter: str,

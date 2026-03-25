@@ -3,12 +3,15 @@ Shared cover letter generation for all apply methods.
 Generates text, PDF, and DOCX versions for ATS uploads.
 """
 
+import logging
 import os
 from datetime import date
 from pathlib import Path
 
 from openai import OpenAI
 from core.models import Job
+
+log = logging.getLogger(__name__)
 
 
 LETTERS_DIR = Path(__file__).parent.parent / "data" / "cover_letters"
@@ -82,7 +85,7 @@ def generate_cover_letter(job: Job, client: OpenAI | None = None) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"  [cover_letter] Failed to generate for {job.title}: {e}")
+        log.error("Failed to generate for %s: %s", job.title, e)
         return ""
 
 
@@ -205,7 +208,7 @@ def generate_cover_letter_docx(job: Job, letter_text: str) -> str:
         return str(filepath)
 
     except ImportError:
-        print("  [cover_letter] python-docx not installed — skipping DOCX generation")
+        log.warning("python-docx not installed — skipping DOCX generation")
         return ""
 
 

@@ -4,9 +4,12 @@ Maps candidate profile data to custom ATS questions honestly.
 """
 
 import json
+import logging
 import os
 from openai import OpenAI
 from core.models import Job
+
+log = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = """You answer job application screening questions for a specific candidate. You must answer HONESTLY — never fabricate qualifications or experience.
@@ -85,7 +88,7 @@ def answer_questions(questions: list[dict], candidate: dict, job: Job) -> dict:
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         return json.loads(text)
     except Exception as e:
-        print(f"    [question_answerer] GPT failed: {e} — falling back to config answers")
+        log.warning("GPT failed: %s — falling back to config answers", e)
         return _answer_from_config(questions, candidate)
 
 

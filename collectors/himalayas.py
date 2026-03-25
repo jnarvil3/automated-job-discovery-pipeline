@@ -1,8 +1,11 @@
+import logging
 import urllib.parse
 import re
 import requests
 from collectors.base import BaseCollector
 from core.models import Job
+
+log = logging.getLogger(__name__)
 
 API_BASE = "https://himalayas.app/jobs/api"
 
@@ -64,7 +67,7 @@ class HimalayasCollector(BaseCollector):
                         source="himalayas",
                     ))
             except Exception as e:
-                print(f"[himalayas] Error for '{query}': {e}")
+                log.warning("Error for '%s': %s", query, e)
 
-        print(f"[himalayas] Collected {len(jobs)} jobs from {len(SEARCHES)} searches")
+        log.info("Collected %d jobs from %d searches", len(jobs), len(SEARCHES))
         return jobs

@@ -1,7 +1,10 @@
+import logging
 import urllib.parse
 import requests
 from collectors.base import BaseCollector
 from core.models import Job
+
+log = logging.getLogger(__name__)
 
 API_URL = "https://www.arbeitnow.com/api/job-board-api"
 
@@ -48,7 +51,7 @@ class ArbeitnowCollector(BaseCollector):
                     resp.raise_for_status()
                     data = resp.json()
                 except Exception as e:
-                    print(f"[arbeitnow] Error for '{query}' page {page}: {e}")
+                    log.warning("Error for '%s' page %d: %s", query, page, e)
                     break
 
                 listings = data.get("data", [])
@@ -83,5 +86,5 @@ class ArbeitnowCollector(BaseCollector):
                 if not data.get("links", {}).get("next"):
                     break
 
-        print(f"[arbeitnow] Collected {len(jobs)} jobs from {len(SEARCHES)} searches")
+        log.info("Collected %d jobs from %d searches", len(jobs), len(SEARCHES))
         return jobs

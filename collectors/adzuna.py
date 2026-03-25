@@ -1,9 +1,12 @@
+import logging
 import urllib.parse
 import os
 import re
 import requests
 from collectors.base import BaseCollector
 from core.models import Job
+
+log = logging.getLogger(__name__)
 
 API_BASE = "https://api.adzuna.com/v1/api/jobs/de/search"
 
@@ -34,7 +37,7 @@ class AdzunaCollector(BaseCollector):
 
     def collect(self) -> list[Job]:
         if not self.app_id or not self.app_key:
-            print("[adzuna] ADZUNA_APP_ID / ADZUNA_APP_KEY not set — skipping")
+            log.warning("ADZUNA_APP_ID / ADZUNA_APP_KEY not set — skipping")
             return []
 
         jobs: list[Job] = []
@@ -74,8 +77,8 @@ class AdzunaCollector(BaseCollector):
                             source="adzuna",
                         ))
                 except Exception as e:
-                    print(f"[adzuna] Error for '{query}' page {page}: {e}")
+                    log.warning("Error for '%s' page %d: %s", query, page, e)
                     break  # stop paginating this query on error
 
-        print(f"[adzuna] Collected {len(jobs)} jobs from {len(SEARCHES)} searches")
+        log.info("Collected %d jobs from %d searches", len(jobs), len(SEARCHES))
         return jobs
