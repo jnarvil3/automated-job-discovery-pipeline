@@ -125,3 +125,26 @@
 - [x] M4: Added pause mechanism — if data/.pause file exists, pipeline exits cleanly with log message
 
 **Test status:** 58 tests, all passing.
+
+## Cycle 7
+
+### Priority 3: Review Feedback (Cycle 6) — All items addressed
+
+**Critical fixes (commit 11cdbb9):**
+- [x] C1: Fixed email auto-apply resume attachment encoding — replaced list(f.read()) with base64.b64encode(f.read()).decode() so Resend API receives valid PDF data
+- [x] C2: Added normalize_url() to strip tracking params (utm_*, fbclid, ref, source, mc_cid, mc_eid) and trailing slashes before SHA-256 hashing in Job.id, preventing duplicate entries
+- [x] C3: Added German-title heuristic in post-scoring filter — jobs with "Werkstudent" or "Praktikum" in title without English-environment signals are demoted from HIGH to MEDIUM
+
+**High priority fixes (commits 5caa7e6, 9d31905):**
+- [x] H1: Added 1.5s delay between Indeed RSS feed fetches to prevent IP bans from rapid-fire requests
+- [x] H2: Tightened marketing cap — added "performance marketing" to keywords, reduced description window from 500 to 200 chars
+- [x] H3: Added TestEnricher class with 5 tests: German-required rejection, apply email extraction, ATS detection, URL redirect update, HTTP 500 retry
+- [x] H4: Removed dead code get_todays_jobs() from database.py and its import in main.py
+
+**Medium priority (commit 53850bd):**
+- [x] M1: Removed 0.5s sleep between enricher thread pool submissions — ThreadPoolExecutor(max_workers=5) already limits concurrency, saving ~25s for 50 jobs
+- [x] M2: Added database indexes on jobs(found_date) and jobs(status) for faster queries
+- [x] M3: Cleaned up score reasons for digest display — strip internal prefixes (Post-score rejection, Auto-rejected, etc.) via re.sub() in _job_card()
+- [x] M4: Added job freshness tracking — posted_date field in Job model, extracted from all collectors (Adzuna created, Arbeitnow created_at, Himalayas pubDate), shown as freshness badges in email digest
+
+**Test status:** 63 tests, all passing.
