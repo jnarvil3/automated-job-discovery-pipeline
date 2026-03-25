@@ -8,6 +8,7 @@ Handles multi-step forms, file uploads, and CAPTCHA detection.
 import asyncio
 import json
 import os
+import time
 from pathlib import Path
 from datetime import datetime
 
@@ -305,8 +306,20 @@ async def _fill_fields(page, fields: list[FormField], resume_path: str,
     return filled
 
 
+def _cleanup_old_screenshots():
+    """Delete screenshots older than 7 days."""
+    cutoff = time.time() - 7 * 86400
+    for f in SCREENSHOTS_DIR.glob("*.png"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+        except OSError:
+            pass
+
+
 def browser_apply(job: Job, candidate: dict, cover_letter: str,
                   resume_path: str, dry_run: bool = True,
                   cover_letter_pdf: str = "") -> ApplicationResult:
     """Sync wrapper for async browser apply."""
+    _cleanup_old_screenshots()
     return asyncio.run(_apply_with_browser(job, candidate, cover_letter, resume_path, dry_run, cover_letter_pdf))
