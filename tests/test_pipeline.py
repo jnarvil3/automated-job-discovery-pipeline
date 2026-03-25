@@ -19,6 +19,7 @@ from core.enricher import requires_german, extract_apply_email
 from core.ats_detector import detect_ats
 from core.rate_limiter import remaining_applications_today
 from delivery.cover_letter import _format_full_letter
+from delivery.email import build_digest, send_digest
 
 
 # ---------------------------------------------------------------------------
@@ -774,6 +775,186 @@ class TestArbeitnowCollector:
 
         with patch("collectors.arbeitnow.requests.Session", return_value=mock_session):
             collector = ArbeitnowCollector()
+            jobs = collector.collect()
+
+        assert jobs == []
+
+
+# ---------------------------------------------------------------------------
+# Email digest tests
+# ---------------------------------------------------------------------------
+
+class TestEmailDigest:
+    """Tests for delivery/email.py build_digest and send_digest."""
+
+    def test_html_escapes_special_characters(self):
+        """Company names with & and < should be rendered safely."""
+        job = _make_job(company="Ernst & Young", title="Intern <Finance>")
+        job.score = "HIGH"
+        job.score_reason = "FP&A match"
+        _, body = build_digest([job])
+        assert "&amp;" in body
+        assert "&lt;" in body
+
+    def test_categorizes_auto_applied_jobs(self):
+        """Auto-applied jobs should appear in the AUTO-APPLIED section."""
+        job = _make_job()
+        job.score = "MEDIUM"
+        job.status = "auto_applied"
+        job.apply_method = "api_greenhouse"
+        _, body = build_digest([job])
+        assert "AUTO-APPLIED" in body
+
+    def test_empty_jobs_returns_early(self):
+        """send_digest with empty list should not crash."""
+        # Should return without error
+        send_digest([], "test@test.com")
+
+
+# ---------------------------------------------------------------------------
+# Himalayas and Indeed RSS collector tests
+# ---------------------------------------------------------------------------
+
+class TestHimalayasCollector:
+    """Tests for collectors/himalayas.py."""
+
+    SAMPLE_RESPONSE = {
+        "jobs": [
+            {
+                "title": "Working Student Sustainability",
+                "companyName": "GreenTech GmbH",
+                "applicationLink": "https://himalayas.app/j/1",
+                "excerpt": "<p>Join our sustainability team.</p>",
+            },
+            {
+                "title": "Senior Software Engineer",
+                "companyName": "TechCo",
+                "applicationLink": "https://himalayas.app/j/2",
+                "excerpt": "Build backend services.",
+            },
+        ]
+    }
+
+    def test_parses_valid_response(self):
+        from collectors.himalayas import HimalayasCollector
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = self.SAMPLE_RESPONSE
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with patch("collectors.himalayas.requests.Session", return_value=mock_session):
+            collector = HimalayasCollector()
+            jobs = collector.collect()
+
+        # Only the "Working Student" job should pass the role keyword filter
+        matching = [j for j in jobs if j.company == "GreenTech GmbH"]
+        assert len(matching) >= 1
+        assert matching[0].source == "himalayas"
+        # HTML should be stripped from description
+        assert "<p>" not in matching[0].description
+
+    def test_filters_non_role_keywords(self):
+        """Jobs without intern/working student in title are excluded."""
+        from collectors.himalayas import HimalayasCollector
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "jobs": [
+                {
+                    "title": "Senior Finance Manager",
+                    "companyName": "BigCo",
+                    "applicationLink": "https://himalayas.app/j/senior",
+                    "excerpt": "Lead the finance team.",
+                },
+            ]
+        }
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with patch("collectors.himalayas.requests.Session", return_value=mock_session):
+            collector = HimalayasCollector()
+            jobs = collector.collect()
+
+        assert len(jobs) == 0
+
+    def test_handles_empty_response(self):
+        from collectors.himalayas import HimalayasCollector
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"jobs": []}
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with patch("collectors.himalayas.requests.Session", return_value=mock_session):
+            collector = HimalayasCollector()
+            jobs = collector.collect()
+
+        assert jobs == []
+
+
+class TestIndeedRSSCollector:
+    """Tests for collectors/indeed_rss.py."""
+
+    def _mock_feed(self, entries):
+        feed = MagicMock()
+        feed.entries = entries
+        return feed
+
+    def test_parses_valid_feed(self):
+        from collectors.indeed_rss import IndeedRSSCollector
+
+        entry = MagicMock()
+        entry.get = lambda k, d="": {
+            "link": "https://indeed.com/j/1",
+            "title": "Working Student Finance",
+            "summary": "<b>Great opportunity</b> in finance.",
+        }.get(k, d)
+        entry.source = MagicMock()
+        entry.source.title = "FinCo AG"
+
+        with patch("collectors.indeed_rss.feedparser.parse", return_value=self._mock_feed([entry])):
+            collector = IndeedRSSCollector(["https://indeed.com/rss/1"])
+            jobs = collector.collect()
+
+        assert len(jobs) == 1
+        assert jobs[0].title == "Working Student Finance"
+        assert jobs[0].company == "FinCo AG"
+        assert jobs[0].source == "indeed"
+        # HTML should be stripped
+        assert "<b>" not in jobs[0].description
+
+    def test_deduplicates_by_url(self):
+        from collectors.indeed_rss import IndeedRSSCollector
+
+        entry = MagicMock()
+        entry.get = lambda k, d="": {
+            "link": "https://indeed.com/j/same",
+            "title": "Job A",
+            "summary": "Desc",
+        }.get(k, d)
+        entry.source = MagicMock()
+        entry.source.title = "Co"
+
+        # Same entry in two feeds
+        with patch("collectors.indeed_rss.feedparser.parse", return_value=self._mock_feed([entry, entry])):
+            collector = IndeedRSSCollector(["https://indeed.com/rss/1"])
+            jobs = collector.collect()
+
+        urls = [j.url for j in jobs]
+        assert urls.count("https://indeed.com/j/same") == 1
+
+    def test_handles_empty_feed(self):
+        from collectors.indeed_rss import IndeedRSSCollector
+
+        with patch("collectors.indeed_rss.feedparser.parse", return_value=self._mock_feed([])):
+            collector = IndeedRSSCollector(["https://indeed.com/rss/1"])
             jobs = collector.collect()
 
         assert jobs == []

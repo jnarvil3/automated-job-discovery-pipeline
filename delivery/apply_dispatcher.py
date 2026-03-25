@@ -265,6 +265,11 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
         if not job.cover_letter:
             log.info("Generating cover letter...")
             job.cover_letter = generate_cover_letter(job)
+            if not job.cover_letter:
+                log.warning("Cover letter generation failed — skipping auto-apply for %s", job.title)
+                job.status = "quick_apply"
+                skipped += 1
+                continue
 
         # Generate PDF and DOCX versions for ATS uploads
         cover_letter_pdf = ""
