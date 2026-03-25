@@ -79,7 +79,8 @@ class LeverApplicant(ATSApplicant):
         resume = Path(resume_path) if resume_path else None
         if resume and resume.exists():
             with open(resume, "rb") as f:
-                add_file("resume", "Amane_Dias_CV.pdf", f.read())
+                full_name_r = f"{candidate.get('first_name', '')}_{candidate.get('last_name', '')}".replace(' ', '_')
+                add_file("resume", f"{full_name_r}_CV.pdf", f.read())
 
         # Custom answers
         for key, value in question_answers.items():

@@ -72,7 +72,8 @@ class GreenhouseApplicant(ATSApplicant):
         cl_pdf = Path(cover_letter_pdf) if cover_letter_pdf else None
         if cl_pdf and cl_pdf.exists():
             with open(cl_pdf, "rb") as f:
-                add_file("cover_letter", "Amane_Dias_Cover_Letter.pdf", f.read())
+                full_name = f"{candidate.get('first_name', '')}_{candidate.get('last_name', '')}".replace(' ', '_')
+                add_file("cover_letter", f"{full_name}_Cover_Letter.pdf", f.read())
         elif cover_letter:
             add_field("cover_letter", cover_letter)
 
@@ -80,7 +81,8 @@ class GreenhouseApplicant(ATSApplicant):
         resume = Path(resume_path) if resume_path else None
         if resume and resume.exists():
             with open(resume, "rb") as f:
-                add_file("resume", "Amane_Dias_CV.pdf", f.read())
+                full_name_r = f"{candidate.get('first_name', '')}_{candidate.get('last_name', '')}".replace(' ', '_')
+                add_file("resume", f"{full_name_r}_CV.pdf", f.read())
 
         # Custom question answers
         for question_id, answer in question_answers.items():

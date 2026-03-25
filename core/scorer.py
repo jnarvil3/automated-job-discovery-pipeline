@@ -77,7 +77,7 @@ def score_jobs(jobs: list[Job]) -> list[Job]:
 
             result = json.loads(text)
             job.score = result.get("score", "LOW").upper()
-            job.fit_score = int(result.get("fit_score", 0))
+            job.fit_score = int(float(result.get("fit_score", 0)))
             job.score_reason = result.get("reason", "")
             print(f"  [{job.score} {job.fit_score}/10] {job.title} at {job.company} — {job.score_reason}")
 

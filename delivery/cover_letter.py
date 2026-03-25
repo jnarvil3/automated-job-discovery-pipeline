@@ -85,8 +85,22 @@ def generate_cover_letter(job: Job, client: OpenAI | None = None) -> str:
         return ""
 
 
-def _format_full_letter(body: str, job: Job) -> str:
+def _load_candidate_name() -> str:
+    """Load candidate name from profile config."""
+    config_path = Path(__file__).parent.parent / "config" / "profile.yaml"
+    try:
+        import yaml
+        with open(config_path) as f:
+            profile = yaml.safe_load(f)
+        return profile.get("name", "Amane Aguiar Dias de Azevedo")
+    except Exception:
+        return "Amane Aguiar Dias de Azevedo"
+
+
+def _format_full_letter(body: str, job: Job, candidate_name: str = "") -> str:
     """Wrap the GPT-generated body with proper letter formatting."""
+    if not candidate_name:
+        candidate_name = _load_candidate_name()
     today = date.today().strftime("%B %d, %Y")
     return (
         f"{today}\n\n"
@@ -95,7 +109,7 @@ def _format_full_letter(body: str, job: Job) -> str:
         f"Dear Hiring Team,\n\n"
         f"{body}\n\n"
         f"Best regards,\n"
-        f"Amane Aguiar Dias de Azevedo"
+        f"{candidate_name}"
     )
 
 

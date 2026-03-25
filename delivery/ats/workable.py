@@ -56,7 +56,7 @@ class WorkableApplicant(ATSApplicant):
         if resume and resume.exists():
             with open(resume, "rb") as f:
                 payload["resume"] = {
-                    "name": "Amane_Dias_CV.pdf",
+                    "name": f"{candidate.get('first_name', '')}_{candidate.get('last_name', '')}".replace(' ', '_') + "_CV.pdf",
                     "data": base64.b64encode(f.read()).decode(),
                 }
 

@@ -1,3 +1,4 @@
+import html
 import os
 import resend
 from datetime import date
@@ -115,7 +116,7 @@ def _job_card(num: int, job: Job, include_cover_letter: bool,
         card += f"""
         <details style="margin-top: 10px;">
             <summary>{label}</summary>
-            <pre style="white-space: pre-wrap; font-family: sans-serif; background: #f9f9f9; padding: 10px; border-radius: 4px;">{job.cover_letter}</pre>
+            <pre style="white-space: pre-wrap; font-family: sans-serif; background: #f9f9f9; padding: 10px; border-radius: 4px;">{html.escape(job.cover_letter)}</pre>
         </details>
         """
     card += "</div>"
