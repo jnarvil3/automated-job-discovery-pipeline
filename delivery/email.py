@@ -109,10 +109,10 @@ def _job_card(num: int, job: Job, include_cover_letter: bool,
 
     card = f"""
     <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
-        <strong>{num}. {job.title}</strong>{status_badge}{extra_html}<br>
-        🏢 {job.company} · 📍 {job.location}<br>
-        <em>{job.score_reason}</em><br>
-        <a href="{job.url}">→ View posting</a>
+        <strong>{num}. {html.escape(job.title)}</strong>{status_badge}{extra_html}<br>
+        🏢 {html.escape(job.company)} · 📍 {html.escape(job.location)}<br>
+        <em>{html.escape(job.score_reason)}</em><br>
+        <a href="{html.escape(job.url)}">→ View posting</a>
     """
     if include_cover_letter and job.cover_letter:
         label = "📝 Letter Sent" if show_auto_applied else "📝 Draft Cover Letter"

@@ -3,6 +3,7 @@ Fetches full job descriptions from URLs and checks for German language requireme
 Also detects ATS platforms and extracts application emails.
 """
 
+import logging
 import re
 import time
 import urllib.request
@@ -10,6 +11,8 @@ import urllib.error
 from html.parser import HTMLParser
 from core.models import Job
 from core.ats_detector import detect_ats
+
+log = logging.getLogger(__name__)
 
 # Patterns that indicate German is required
 GERMAN_REQUIRED_PATTERNS = [
@@ -152,7 +155,7 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
     german_jobs = []
 
     for i, job in enumerate(jobs):
-        print(f"  [{i+1}/{len(jobs)}] Checking {job.title} at {job.company}...", end=" ")
+        log.info("[%d/%d] Checking %s at %s...", i+1, len(jobs), job.title, job.company)
 
         full_text, final_url, raw_html = fetch_full_description(job.url)
         if full_text:
@@ -161,7 +164,7 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
 
             is_german, reason = requires_german(full_text)
             if is_german:
-                print(f"REJECTED — {reason}")
+                log.info("  REJECTED — %s", reason)
                 job.score = "LOW"
                 job.score_reason = reason
                 german_jobs.append(job)
@@ -182,7 +185,7 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
         # Also check the original description/title
         is_german, reason = requires_german(f"{job.title} {job.description}")
         if is_german:
-            print(f"REJECTED — {reason}")
+            log.info("  REJECTED — %s", reason)
             job.score = "LOW"
             job.score_reason = reason
             german_jobs.append(job)
@@ -190,7 +193,7 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
 
         ats_note = f" [{job.ats_platform}]" if job.ats_platform else ""
         email_note = f" (apply: {job.apply_email})" if job.apply_email else ""
-        print(f"OK{ats_note}{email_note}")
+        log.info("  OK%s%s", ats_note, email_note)
         english_jobs.append(job)
 
     return english_jobs, german_jobs
