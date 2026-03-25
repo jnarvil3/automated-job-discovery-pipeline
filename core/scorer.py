@@ -1,7 +1,10 @@
 import json
+import logging
 import os
 from openai import OpenAI
 from core.models import Job
+
+log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a strict job matching assistant. Score jobs for a specific candidate. Return valid JSON only.
 
@@ -79,14 +82,14 @@ def score_jobs(jobs: list[Job]) -> list[Job]:
             job.score = result.get("score", "LOW").upper()
             job.fit_score = int(float(result.get("fit_score", 0)))
             job.score_reason = result.get("reason", "")
-            print(f"  [{job.score} {job.fit_score}/10] {job.title} at {job.company} — {job.score_reason}")
+            log.info("[%s %d/10] %s at %s — %s", job.score, job.fit_score, job.title, job.company, job.score_reason)
 
         except (json.JSONDecodeError, KeyError, IndexError) as e:
-            print(f"  [ERROR] Failed to parse score for {job.title}: {e}")
+            log.error("Failed to parse score for %s: %s", job.title, e)
             job.score = "LOW"
             job.score_reason = "Scoring failed — could not parse response"
         except Exception as e:
-            print(f"  [API ERROR] {job.title}: {e}")
+            log.error("API error scoring %s: %s", job.title, e)
             job.score = "LOW"
             job.score_reason = "Scoring failed — API error"
 

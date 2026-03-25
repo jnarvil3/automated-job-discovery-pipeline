@@ -9,6 +9,7 @@ Daily automated pipeline that:
 4. Sends a ranked email digest
 """
 
+import logging
 import os
 import sys
 from datetime import date
@@ -18,6 +19,12 @@ import yaml
 from langdetect import detect, DetectorFactory, LangDetectException
 
 DetectorFactory.seed = 0
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
+log = logging.getLogger("pipeline")
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -67,25 +74,25 @@ def validate_startup(profile: dict):
         warnings.append("sender_email is empty in profile.yaml — auto-apply emails will use the Resend test domain")
 
     for w in warnings:
-        print(f"  [WARN] {w}")
+        log.warning(w)
     if errors:
         for e in errors:
-            print(f"  [FATAL] {e}")
-        print("\nFix the above errors and re-run.")
+            log.error(e)
+        log.error("Fix the above errors and re-run.")
         sys.exit(1)
 
 
 def run():
-    print("=" * 50)
-    print(f"Amane's Job Pipeline — {date.today().isoformat()}")
-    print("=" * 50)
+    log.info("=" * 50)
+    log.info("Amane's Job Pipeline — %s", date.today().isoformat())
+    log.info("=" * 50)
 
     profile = load_profile()
     validate_startup(profile)
     conn = get_connection()
 
     # --- Step 1: Collect from all sources ---
-    print("\n📡 Collecting jobs...")
+    log.info("Collecting jobs...")
 
     collectors = [
         ArbeitnowCollector(),
@@ -99,12 +106,12 @@ def run():
         try:
             all_jobs.extend(collector.collect())
         except Exception as e:
-            print(f"  [ERROR] {collector.__class__.__name__} failed: {e}")
+            log.error("%s failed: %s", collector.__class__.__name__, e)
 
-    print(f"\n  Total collected: {len(all_jobs)}")
+    log.info("Total collected: %d", len(all_jobs))
 
     # --- Step 2: Deduplicate ---
-    print("\n🔍 Deduplicating...")
+    log.info("Deduplicating...")
     new_jobs = []
     seen_title_company: set[tuple[str, str]] = set()
     for job in all_jobs:
@@ -118,15 +125,15 @@ def run():
         seen_title_company.add(key)
         new_jobs.append(job)
 
-    print(f"  New jobs: {len(new_jobs)} (skipped {len(all_jobs) - len(new_jobs)} duplicates)")
+    log.info("New jobs: %d (skipped %d duplicates)", len(new_jobs), len(all_jobs) - len(new_jobs))
 
     if not new_jobs:
-        print("\nNo new jobs today. Done.")
+        log.info("No new jobs today. Done.")
         conn.close()
         return
 
     # --- Step 2.5: Quick filter — remove posts written entirely in German ---
-    print("\n🇩🇪 Quick filter: removing German-language postings...")
+    log.info("Quick filter: removing German-language postings...")
     english_jobs = []
     german_count = 0
     for job in new_jobs:
@@ -142,33 +149,33 @@ def run():
             save_job(conn, job)
         else:
             english_jobs.append(job)
-    print(f"  Removed {german_count} German-language jobs, {len(english_jobs)} remaining")
+    log.info("Removed %d German-language jobs, %d remaining", german_count, len(english_jobs))
 
     if not english_jobs:
-        print("\nNo English-language jobs today. Done.")
+        log.info("No English-language jobs today. Done.")
         conn.close()
         return
 
     # --- Step 3: Fetch full descriptions + check for German requirements ---
-    print(f"\n🔎 Fetching full job descriptions & checking German requirements...")
+    log.info("Fetching full job descriptions & checking German requirements...")
     enriched_jobs, german_required = enrich_jobs(english_jobs)
 
     # Save German-required jobs as LOW
     for job in german_required:
         save_job(conn, job)
-    print(f"\n  Passed: {len(enriched_jobs)} | Rejected (German required): {len(german_required)}")
+    log.info("Passed: %d | Rejected (German required): %d", len(enriched_jobs), len(german_required))
 
     if not enriched_jobs:
-        print("\nNo jobs passed language filter. Done.")
+        log.info("No jobs passed language filter. Done.")
         conn.close()
         return
 
     # --- Step 4: Score ---
-    print(f"\n🎯 Scoring {len(enriched_jobs)} jobs with GPT-4o-mini...")
+    log.info("Scoring %d jobs with GPT-4o-mini...", len(enriched_jobs))
     scored_jobs = score_jobs(enriched_jobs)
 
     # --- Step 4.5: Hard German filter (safety net after AI scoring) ---
-    print("\n🛡️  Post-scoring German filter...")
+    log.info("Post-scoring German filter...")
     german_caught = 0
     for job in scored_jobs:
         if job.score in ("HIGH", "MEDIUM"):
@@ -178,7 +185,7 @@ def run():
                 job.score_reason = f"Post-score rejection: {reason}"
                 german_caught += 1
     if german_caught:
-        print(f"  Caught {german_caught} German-requirement jobs that slipped through scoring")
+        log.info("Caught %d German-requirement jobs that slipped through scoring", german_caught)
 
     # --- Step 5: Tier assignment ---
     # TOP tier: best 2-3 HIGH jobs with fit_score >= 7
@@ -199,46 +206,46 @@ def run():
     high = high[:TOP_N]
     medium = [j for j in scored_jobs if j.score == "MEDIUM"]
     low = [j for j in scored_jobs if j.score == "LOW"]
-    print(f"  TOP {len(high)} | MEDIUM: {len(medium)} | LOW: {len(low)}")
+    log.info("TOP %d | MEDIUM: %d | LOW: %d", len(high), len(medium), len(low))
 
     # --- Step 5.1: Generate cover letters for HIGH-tier jobs ---
     if high:
-        print(f"\n📝 Generating cover letters for {len(high)} TOP jobs...")
+        log.info("Generating cover letters for %d TOP jobs...", len(high))
         for job in high:
             if not job.cover_letter:
                 job.cover_letter = generate_cover_letter(job)
                 if job.cover_letter:
-                    print(f"  ✓ {job.title} at {job.company}")
+                    log.info("  Cover letter: %s at %s", job.title, job.company)
 
     # --- Step 5.5: Auto-apply ---
-    print("\n🤖 Auto-applying...")
+    log.info("Auto-applying...")
     dry_run = "--send" not in sys.argv
     scored_jobs = apply_to_jobs(scored_jobs, profile, conn, dry_run=dry_run)
 
     # --- Step 6: Save ---
-    print("\n💾 Saving to database...")
+    log.info("Saving to database...")
     for job in scored_jobs:
         save_job(conn, job)
 
     # --- Step 7: Send digest ---
-    print("\n📧 Sending digest...")
+    log.info("Sending digest...")
     recipient = profile.get("email") or os.environ.get("AMANE_EMAIL", "")
 
     relevant_jobs = [j for j in scored_jobs if j.score in ("HIGH", "MEDIUM")]
 
     if not relevant_jobs:
-        print("  No HIGH or MEDIUM jobs today — skipping email.")
+        log.info("No HIGH or MEDIUM jobs today — skipping email.")
     elif not recipient:
-        print("  [WARN] No recipient email configured — printing to stdout")
+        log.warning("No recipient email configured — printing to stdout")
         send_digest(relevant_jobs, "")
     elif "--send" in sys.argv:
         send_digest(relevant_jobs, recipient)
     else:
-        print("  [DRY RUN] Use --send to actually email. Printing to stdout:")
+        log.info("[DRY RUN] Use --send to actually email. Printing to stdout:")
         send_digest(relevant_jobs, "")
 
     conn.close()
-    print("\n✅ Done.")
+    log.info("Done.")
 
 
 if __name__ == "__main__":

@@ -9,10 +9,13 @@ Strategy priority:
 """
 
 import json
+import logging
 import os
 import sys
 import sqlite3
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from core.models import Job
 from core.rate_limiter import remaining_applications_today
@@ -54,13 +57,13 @@ def _try_api_apply(job: Job, candidate: dict, cover_letter: str,
     """Try to apply via ATS API. Returns None if no API available."""
     for applicant in ATS_APPLICANTS:
         if applicant.can_apply(job):
-            print(f"    Trying {applicant.platform_name} API...")
+            log.info("Trying %s API...", applicant.platform_name)
 
             # Fetch custom questions
             questions = applicant.fetch_questions(job)
             question_answers = {}
             if questions:
-                print(f"    Answering {len(questions)} screening questions...")
+                log.info("Answering %d screening questions...", len(questions))
                 question_answers = answer_questions(questions, candidate, job)
 
             # Submit — pass PDF path if available for file upload fields
@@ -87,7 +90,7 @@ def _try_email_apply(job: Job, candidate: dict, cover_letter: str,
         )
 
     if dry_run:
-        print(f"    [DRY RUN] Would email {job.apply_email}")
+        log.info("[DRY RUN] Would email %s", job.apply_email)
         return ApplicationResult(
             success=True, method="email",
             message=f"DRY RUN — would email {job.apply_email}",
@@ -190,7 +193,7 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
     """
     auto_apply_config = profile.get("auto_apply", {})
     if not auto_apply_config.get("enabled", True):
-        print("  [dispatcher] Auto-apply disabled in config")
+        log.info("Auto-apply disabled in config")
         return jobs
 
     # Which tiers to auto-apply
@@ -198,14 +201,14 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
     eligible_jobs = [j for j in jobs if j.score in apply_tiers]
 
     if not eligible_jobs:
-        print("  [dispatcher] No eligible jobs for auto-apply")
+        log.info("No eligible jobs for auto-apply")
         return jobs
 
     # Check rate limit
     max_per_day = auto_apply_config.get("max_per_day", 5)
     remaining = remaining_applications_today(conn, max_per_day)
     if remaining <= 0:
-        print(f"  [dispatcher] Daily limit reached ({max_per_day}/day) — skipping auto-apply")
+        log.info("Daily limit reached (%d/day) — skipping auto-apply", max_per_day)
         for job in eligible_jobs:
             job.status = "queued"
         return jobs
@@ -235,7 +238,7 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
 
     for job in eligible_jobs:
         if applied >= remaining:
-            print(f"  [dispatcher] Rate limit reached — {len(eligible_jobs) - applied - failed - skipped} jobs queued for next run")
+            log.info("Rate limit reached — %d jobs queued for next run", len(eligible_jobs) - applied - failed - skipped)
             job.status = "queued"
             continue
 
@@ -247,7 +250,7 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
         if company_key in applied_companies:
             job.status = "apply_skipped_company_dup"
             skipped += 1
-            print(f"  [{applied+1}/{min(len(eligible_jobs), remaining)}] {job.title} at {job.company} — SKIPPED (already applied to {job.company} this week)")
+            log.info("[%d/%d] %s at %s — SKIPPED (already applied this week)", applied+1, min(len(eligible_jobs), remaining), job.title, job.company)
             continue
         if job.apply_attempts >= max_retries:
             job.status = "apply_failed"
@@ -255,11 +258,11 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
             failed += 1
             continue
 
-        print(f"\n  [{applied+1}/{min(len(eligible_jobs), remaining)}] {job.title} at {job.company}")
+        log.info("[%d/%d] %s at %s", applied+1, min(len(eligible_jobs), remaining), job.title, job.company)
 
         # Generate cover letter if not already done
         if not job.cover_letter:
-            print(f"    Generating cover letter...")
+            log.info("Generating cover letter...")
             job.cover_letter = generate_cover_letter(job)
 
         # Generate PDF and DOCX versions for ATS uploads
@@ -269,7 +272,7 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
             cover_letter_pdf = generate_cover_letter_pdf(job, job.cover_letter)
             cover_letter_docx = generate_cover_letter_docx(job, job.cover_letter)
             if cover_letter_pdf:
-                print(f"    Generated cover letter PDF: {Path(cover_letter_pdf).name}")
+                log.info("Generated cover letter PDF: %s", Path(cover_letter_pdf).name)
 
         job.apply_attempts += 1
         result = None
@@ -307,7 +310,7 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
             job.apply_error = ""
             applied += 1
             applied_companies.add(company_key)
-            print(f"    -> {result.message}")
+            log.info("-> %s", result.message)
 
             # Log to applications table
             from core.database import log_application
@@ -323,7 +326,7 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
             else:
                 job.status = "apply_failed" if job.apply_attempts >= max_retries else "new"
                 failed += 1
-            print(f"    -> FAILED: {result.message}")
+            log.error("-> FAILED: %s", result.message)
 
             from core.database import log_application
             log_application(conn, job.id, result.method, "failed",
@@ -333,7 +336,7 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
             # No method available — manual apply
             job.status = "quick_apply"
             skipped += 1
-            print(f"    -> No auto-apply method available — marked for manual apply")
+            log.info("-> No auto-apply method available — marked for manual apply")
 
-    print(f"\n  [dispatcher] Applied: {applied} | Failed: {failed} | Manual: {skipped}")
+    log.info("Applied: %d | Failed: %d | Manual: %d", applied, failed, skipped)
     return jobs

@@ -1,8 +1,11 @@
 import html
+import logging
 import os
 import resend
 from datetime import date
 from core.models import Job
+
+log = logging.getLogger(__name__)
 
 
 def build_digest(jobs: list[Job]) -> tuple[str, str]:
@@ -126,29 +129,25 @@ def _job_card(num: int, job: Job, include_cover_letter: bool,
 def send_digest(jobs: list[Job], recipient_email: str):
     """Send the digest email via Resend API."""
     if not jobs:
-        print("[email] No jobs to send.")
+        log.info("No jobs to send.")
         return
 
     api_key = os.environ.get("RESEND_API_KEY")
     if not api_key:
-        print("[email] RESEND_API_KEY not set — printing digest to stdout instead.")
+        log.warning("RESEND_API_KEY not set — printing digest to stdout instead.")
         subject, body = build_digest(jobs)
-        print(f"\nSubject: {subject}\n")
+        log.info("Subject: %s", subject)
         for job in jobs:
-            print(f"  [{job.score}] {job.title} at {job.company} ({job.location})")
-            print(f"          {job.score_reason}")
-            print(f"          {job.url}\n")
+            log.info("  [%s] %s at %s (%s) — %s — %s", job.score, job.title, job.company, job.location, job.score_reason, job.url)
         return
 
     sender_email = os.environ.get("SENDER_EMAIL", "")
     if not sender_email:
-        print("[email] SENDER_EMAIL not set — refusing to send from test domain. Set SENDER_EMAIL env var.")
+        log.warning("SENDER_EMAIL not set — refusing to send from test domain. Set SENDER_EMAIL env var.")
         subject, body = build_digest(jobs)
-        print(f"\nSubject: {subject}\n")
+        log.info("Subject: %s", subject)
         for job in jobs:
-            print(f"  [{job.score}] {job.title} at {job.company} ({job.location})")
-            print(f"          {job.score_reason}")
-            print(f"          {job.url}\n")
+            log.info("  [%s] %s at %s (%s) — %s — %s", job.score, job.title, job.company, job.location, job.score_reason, job.url)
         return
 
     resend.api_key = api_key
@@ -161,6 +160,6 @@ def send_digest(jobs: list[Job], recipient_email: str):
             "subject": subject,
             "html": body,
         })
-        print(f"[email] Sent digest to {recipient_email} — id: {result.get('id')}")
+        log.info("Sent digest to %s — id: %s", recipient_email, result.get('id'))
     except Exception as e:
-        print(f"[email] Failed to send: {e}")
+        log.error("Failed to send: %s", e)
