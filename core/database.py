@@ -161,21 +161,3 @@ def update_cover_letter(conn: sqlite3.Connection, job_id: str, letter: str):
     conn.commit()
 
 
-def get_todays_jobs(conn: sqlite3.Connection, found_date: str) -> list[Job]:
-    rows = conn.execute(
-        """SELECT source, title, company, location, description, url, score, fit_score,
-                  score_reason, cover_letter, found_date, status, apply_email,
-                  ats_platform, ats_job_id, ats_board_token, apply_method, apply_attempts, apply_error
-           FROM jobs WHERE found_date = ?""",
-        (found_date,),
-    ).fetchall()
-    return [
-        Job(
-            source=r[0], title=r[1], company=r[2], location=r[3], description=r[4],
-            url=r[5], score=r[6], fit_score=r[7], score_reason=r[8], cover_letter=r[9],
-            found_date=r[10], status=r[11], apply_email=r[12],
-            ats_platform=r[13], ats_job_id=r[14], ats_board_token=r[15],
-            apply_method=r[16], apply_attempts=r[17], apply_error=r[18],
-        )
-        for r in rows
-    ]

@@ -95,7 +95,7 @@ def score_jobs(jobs: list[Job]) -> list[Job]:
             job.score_reason = "Scoring failed — API error"
 
     # Post-scoring: cap marketing-only roles at MEDIUM
-    _marketing_kw = {"marketing", "social media", "content creator", "brand manager", "seo", "sem"}
+    _marketing_kw = {"marketing", "social media", "content creator", "brand manager", "seo", "sem", "performance marketing"}
     _core_fields = {"finance", "fp&a", "financial", "controlling", "sustainability", "esg",
                     "renewable", "energy", "climate", "back office", "backoffice", "accounting"}
     for job in jobs:
@@ -103,7 +103,7 @@ def score_jobs(jobs: list[Job]) -> list[Job]:
             continue
         title_lower = job.title.lower()
         is_marketing = any(kw in title_lower for kw in _marketing_kw)
-        is_core = any(kw in f"{job.title} {job.description[:500]}".lower() for kw in _core_fields)
+        is_core = any(kw in f"{job.title} {job.description[:200]}".lower() for kw in _core_fields)
         if is_marketing and not is_core:
             job.score = "MEDIUM"
             job.score_reason = f"(Marketing-only — capped at MEDIUM) {job.score_reason}"

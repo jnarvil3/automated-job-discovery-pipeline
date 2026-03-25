@@ -1,4 +1,5 @@
 import logging
+import time
 import feedparser
 import re
 from collectors.base import BaseCollector
@@ -15,7 +16,9 @@ class IndeedRSSCollector(BaseCollector):
         jobs: list[Job] = []
         seen_urls: set[str] = set()
 
-        for url in self.feed_urls:
+        for i, url in enumerate(self.feed_urls):
+            if i > 0:
+                time.sleep(1.5)
             try:
                 feed = feedparser.parse(url)
                 for entry in feed.entries:

@@ -34,7 +34,7 @@ from collectors.arbeitnow import ArbeitnowCollector
 from collectors.adzuna import AdzunaCollector
 from collectors.himalayas import HimalayasCollector
 from collectors.indeed_rss import IndeedRSSCollector
-from core.database import get_connection, job_exists, job_exists_by_title_company, save_job, get_todays_jobs, get_retry_candidates
+from core.database import get_connection, job_exists, job_exists_by_title_company, save_job, get_retry_candidates
 from core.enricher import enrich_jobs, requires_german
 from core.scorer import score_jobs
 from delivery.apply_dispatcher import apply_to_jobs
