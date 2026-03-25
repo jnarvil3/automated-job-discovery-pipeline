@@ -103,3 +103,25 @@
 - [x] M3: Added cover letter generation failure check in apply_dispatcher — jobs without a cover letter are now marked quick_apply instead of submitting empty applications
 
 **Test status:** 54 tests, all passing.
+
+## Cycle 6
+
+### Priority 3: Review Feedback (Cycle 5) — All items addressed
+
+**Critical fixes (commit 95e0616):**
+- [x] C1: HTML-escaped job.company, cover_letter, and full_name in email auto-apply HTML body (_try_email_apply) — prevents broken HTML when company names contain &
+- [x] C2: Wrapped save_job calls in main.py with try/except sqlite3.IntegrityError to prevent pipeline crashes on UNIQUE constraint violations on the url column
+
+**High priority fixes (commit 95e0616):**
+- [x] H1: Updated job.url to final_url after enricher follows redirects, ensuring consistent ID hashing and URL dedup across collectors
+- [x] H2: Added "Hand-tuned to Amane's profile as of March 2026" reminder comments to LETTER_PROMPT, scorer SYSTEM_PROMPT, and question_answerer SYSTEM_PROMPT
+- [x] H3: Moved PDF/DOCX cover letter generation from unconditional to lazy — only generates when an API or browser apply method is about to use the file
+- [x] H4: Added TestSaveJobConflict class with 4 tests: cover_letter preservation on re-save, score update, status preservation, and max apply_attempts retention
+
+**Medium priority (commit f5e7a5a):**
+- [x] M1: Added get_retry_candidates() to database.py — finds apply_failed jobs with room for 2 extra retries within 14 days; wired into main.py before auto-apply step
+- [x] M2: Added collector success/failure tracking with summary log line and "Sources: ..." footer in digest email
+- [x] M3: Parallelized fetch_full_description using ThreadPoolExecutor(max_workers=5) with 0.5s staggered submissions; filtering/processing still sequential for thread safety
+- [x] M4: Added pause mechanism — if data/.pause file exists, pipeline exits cleanly with log message
+
+**Test status:** 58 tests, all passing.
