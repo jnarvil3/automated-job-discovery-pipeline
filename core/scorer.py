@@ -6,6 +6,7 @@ from core.models import Job
 
 log = logging.getLogger(__name__)
 
+# IMPORTANT: Hand-tuned to Amane's profile as of March 2026. Update when her CV changes.
 SYSTEM_PROMPT = """You are a strict job matching assistant. Score jobs for a specific candidate. Return valid JSON only.
 
 CANDIDATE:

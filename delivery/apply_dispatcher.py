@@ -8,6 +8,7 @@ Strategy priority:
 4. Manual — last resort, user gets a direct link
 """
 
+import html
 import json
 import logging
 import os
@@ -110,9 +111,9 @@ def _try_email_apply(job: Job, candidate: dict, cover_letter: str,
     full_name = f"{candidate.get('first_name', '')} {candidate.get('last_name', '')}".strip()
 
     html_body = f"""
-    <p>Dear Hiring Team at {job.company},</p>
-    <p>{cover_letter.replace(chr(10), '<br>')}</p>
-    <p>Best regards,<br>{full_name}</p>
+    <p>Dear Hiring Team at {html.escape(job.company)},</p>
+    <p>{html.escape(cover_letter).replace(chr(10), '<br>')}</p>
+    <p>Best regards,<br>{html.escape(full_name)}</p>
     <p style="color: #888; font-size: 11px;">Please find my CV attached.</p>
     """
 
@@ -271,26 +272,26 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
                 skipped += 1
                 continue
 
-        # Generate PDF and DOCX versions for ATS uploads
-        cover_letter_pdf = ""
-        cover_letter_docx = ""
-        if job.cover_letter:
-            cover_letter_pdf = generate_cover_letter_pdf(job, job.cover_letter)
-            cover_letter_docx = generate_cover_letter_docx(job, job.cover_letter)
-            if cover_letter_pdf:
-                log.info("Generated cover letter PDF: %s", Path(cover_letter_pdf).name)
-
         job.apply_attempts += 1
         result = None
+        cover_letter_pdf = ""
 
         # Try each method in priority order
         # 1. ATS API
         if methods.get("api", True) and job.ats_platform in ("greenhouse", "lever", "workable"):
+            if job.cover_letter and not cover_letter_pdf:
+                cover_letter_pdf = generate_cover_letter_pdf(job, job.cover_letter)
+                if cover_letter_pdf:
+                    log.info("Generated cover letter PDF: %s", Path(cover_letter_pdf).name)
             result = _try_api_apply(job, candidate, job.cover_letter, resume_path,
                                     cover_letter_pdf=cover_letter_pdf)
 
         # 2a. Personio-specific browser handler
         if (result is None or not result.success) and methods.get("browser", True) and job.ats_platform == "personio":
+            if job.cover_letter and not cover_letter_pdf:
+                cover_letter_pdf = generate_cover_letter_pdf(job, job.cover_letter)
+                if cover_letter_pdf:
+                    log.info("Generated cover letter PDF: %s", Path(cover_letter_pdf).name)
             personio_result = _try_personio_apply(job, candidate, job.cover_letter, resume_path, dry_run,
                                                    cover_letter_pdf=cover_letter_pdf)
             if personio_result:
@@ -298,6 +299,10 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
 
         # 2b. Generic browser (if API and Personio didn't work)
         if (result is None or not result.success) and methods.get("browser", True) and job.ats_platform:
+            if job.cover_letter and not cover_letter_pdf:
+                cover_letter_pdf = generate_cover_letter_pdf(job, job.cover_letter)
+                if cover_letter_pdf:
+                    log.info("Generated cover letter PDF: %s", Path(cover_letter_pdf).name)
             browser_result = _try_browser_apply(job, candidate, job.cover_letter, resume_path, dry_run,
                                                 cover_letter_pdf=cover_letter_pdf)
             if browser_result:

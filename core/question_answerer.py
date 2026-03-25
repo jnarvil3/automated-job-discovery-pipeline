@@ -12,6 +12,7 @@ from core.models import Job
 log = logging.getLogger(__name__)
 
 
+# IMPORTANT: Hand-tuned to Amane's profile as of March 2026. Update when her CV changes.
 SYSTEM_PROMPT = """You answer job application screening questions for a specific candidate. You must answer HONESTLY — never fabricate qualifications or experience.
 
 CANDIDATE PROFILE:

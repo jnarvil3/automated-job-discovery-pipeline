@@ -899,6 +899,74 @@ class TestHimalayasCollector:
         assert jobs == []
 
 
+# ---------------------------------------------------------------------------
+# save_job ON CONFLICT behavior tests
+# ---------------------------------------------------------------------------
+
+class TestSaveJobConflict:
+    """Tests for save_job's ON CONFLICT(id) DO UPDATE logic."""
+
+    def test_resave_preserves_cover_letter(self):
+        """Re-saving a job with empty cover_letter should keep the original."""
+        conn = _in_memory_db()
+        job = _make_job()
+        job.cover_letter = "Original letter"
+        save_job(conn, job)
+
+        # Re-save same job with empty cover letter
+        job2 = _make_job(url=job.url)  # same URL = same ID
+        job2.cover_letter = ""
+        save_job(conn, job2)
+
+        row = conn.execute("SELECT cover_letter FROM jobs WHERE id = ?", (job.id,)).fetchone()
+        assert row[0] == "Original letter"
+        conn.close()
+
+    def test_resave_updates_score(self):
+        """Re-saving a job with a new score should update it."""
+        conn = _in_memory_db()
+        job = _make_job()
+        job.score = "LOW"
+        save_job(conn, job)
+
+        job.score = "HIGH"
+        save_job(conn, job)
+
+        row = conn.execute("SELECT score FROM jobs WHERE id = ?", (job.id,)).fetchone()
+        assert row[0] == "HIGH"
+        conn.close()
+
+    def test_resave_preserves_status(self):
+        """Re-saving with status='new' should not overwrite a meaningful status."""
+        conn = _in_memory_db()
+        job = _make_job()
+        job.status = "auto_applied"
+        save_job(conn, job)
+
+        job2 = _make_job(url=job.url)
+        job2.status = "new"
+        save_job(conn, job2)
+
+        row = conn.execute("SELECT status FROM jobs WHERE id = ?", (job.id,)).fetchone()
+        assert row[0] == "auto_applied"
+        conn.close()
+
+    def test_resave_keeps_max_apply_attempts(self):
+        """Re-saving should keep the higher apply_attempts count."""
+        conn = _in_memory_db()
+        job = _make_job()
+        job.apply_attempts = 3
+        save_job(conn, job)
+
+        job2 = _make_job(url=job.url)
+        job2.apply_attempts = 1
+        save_job(conn, job2)
+
+        row = conn.execute("SELECT apply_attempts FROM jobs WHERE id = ?", (job.id,)).fetchone()
+        assert row[0] == 3
+        conn.close()
+
+
 class TestIndeedRSSCollector:
     """Tests for collectors/indeed_rss.py."""
 

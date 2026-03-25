@@ -11,6 +11,7 @@ Daily automated pipeline that:
 
 import logging
 import os
+import sqlite3
 import sys
 from datetime import date
 from pathlib import Path
@@ -222,7 +223,10 @@ def run():
         # --- Step 6: Save ---
         log.info("Saving to database...")
         for job in scored_jobs:
-            save_job(conn, job)
+            try:
+                save_job(conn, job)
+            except sqlite3.IntegrityError as e:
+                log.warning("Failed to save %s at %s: %s", job.title, job.company, e)
 
         # --- Step 7: Send digest ---
         log.info("Sending digest...")

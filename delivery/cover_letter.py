@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 LETTERS_DIR = Path(__file__).parent.parent / "data" / "cover_letters"
 
+# IMPORTANT: Hand-tuned to Amane's profile as of March 2026. Update when her CV changes.
 LETTER_PROMPT = """You write professional cover letters for a specific candidate. Return ONLY the letter body — no date, no address block, no greeting, no signature (those are added separately by the system).
 
 CANDIDATE — Amane Aguiar Dias de Azevedo:

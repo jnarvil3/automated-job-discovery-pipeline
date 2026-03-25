@@ -158,6 +158,11 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
         log.info("[%d/%d] Checking %s at %s...", i+1, len(jobs), job.title, job.company)
 
         full_text, final_url, raw_html = fetch_full_description(job.url)
+
+        # Update URL to canonical (post-redirect) URL for consistent ID hashing
+        if full_text and final_url != job.url:
+            job.url = final_url
+
         if full_text:
             # Update description with richer content for scoring
             job.description = full_text[:3000]
