@@ -592,3 +592,188 @@ class TestApplyDispatcher:
         result = apply_to_jobs([job], profile, conn, dry_run=True)
         assert result[0].status == "quick_apply"
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Collector tests
+# ---------------------------------------------------------------------------
+
+class TestAdzunaCollector:
+    """Tests for collectors/adzuna.py."""
+
+    SAMPLE_RESPONSE = {
+        "results": [
+            {
+                "title": "Working Student Finance",
+                "company": {"display_name": "TestBank AG"},
+                "location": {"display_name": "Berlin"},
+                "description": "<b>FP&amp;A support</b> needed. English team.",
+                "redirect_url": "https://adzuna.de/j/1",
+            },
+            {
+                "title": "Intern Sustainability",
+                "company": {"display_name": "GreenCo"},
+                "location": {"display_name": "Munich"},
+                "description": "Join our ESG team.",
+                "redirect_url": "https://adzuna.de/j/2",
+            },
+        ]
+    }
+
+    def test_parses_valid_response(self):
+        from collectors.adzuna import AdzunaCollector
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = self.SAMPLE_RESPONSE
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with patch("collectors.adzuna.requests.Session", return_value=mock_session):
+            with patch.dict("os.environ", {"ADZUNA_APP_ID": "test", "ADZUNA_APP_KEY": "key"}):
+                collector = AdzunaCollector()
+                jobs = collector.collect()
+
+        assert len(jobs) >= 2
+        assert jobs[0].title == "Working Student Finance"
+        assert jobs[0].company == "TestBank AG"
+        assert jobs[0].source == "adzuna"
+        # HTML tags should be stripped from description
+        assert "<b>" not in jobs[0].description
+
+    def test_handles_missing_fields(self):
+        """Minimal response with missing fields should not crash."""
+        from collectors.adzuna import AdzunaCollector
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "results": [
+                {"redirect_url": "https://adzuna.de/j/minimal"},
+            ]
+        }
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with patch("collectors.adzuna.requests.Session", return_value=mock_session):
+            with patch.dict("os.environ", {"ADZUNA_APP_ID": "test", "ADZUNA_APP_KEY": "key"}):
+                collector = AdzunaCollector()
+                jobs = collector.collect()
+
+        # Should parse without crashing, using defaults
+        assert any(j.title == "Unknown" for j in jobs)
+
+    def test_skips_without_api_keys(self):
+        from collectors.adzuna import AdzunaCollector
+
+        with patch.dict("os.environ", {}, clear=True):
+            collector = AdzunaCollector()
+            jobs = collector.collect()
+        assert jobs == []
+
+    def test_deduplicates_by_url(self):
+        from collectors.adzuna import AdzunaCollector
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "results": [
+                {"title": "Job A", "redirect_url": "https://adzuna.de/j/same"},
+                {"title": "Job B", "redirect_url": "https://adzuna.de/j/same"},
+            ]
+        }
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with patch("collectors.adzuna.requests.Session", return_value=mock_session):
+            with patch.dict("os.environ", {"ADZUNA_APP_ID": "test", "ADZUNA_APP_KEY": "key"}):
+                collector = AdzunaCollector()
+                jobs = collector.collect()
+
+        urls = [j.url for j in jobs]
+        assert urls.count("https://adzuna.de/j/same") == 1
+
+
+class TestArbeitnowCollector:
+    """Tests for collectors/arbeitnow.py."""
+
+    SAMPLE_RESPONSE = {
+        "data": [
+            {
+                "title": "Working Student Finance",
+                "company_name": "FinCo",
+                "location": "Berlin",
+                "description": "Join our FP&A team as a working student.",
+                "url": "https://arbeitnow.com/j/1",
+                "tags": ["finance", "working student"],
+            },
+        ],
+        "links": {"next": None},
+    }
+
+    def test_parses_valid_response(self):
+        from collectors.arbeitnow import ArbeitnowCollector
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = self.SAMPLE_RESPONSE
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with patch("collectors.arbeitnow.requests.Session", return_value=mock_session):
+            collector = ArbeitnowCollector()
+            jobs = collector.collect()
+
+        assert len(jobs) >= 1
+        assert jobs[0].title == "Working Student Finance"
+        assert jobs[0].company == "FinCo"
+        assert jobs[0].source == "arbeitnow"
+
+    def test_filters_irrelevant_jobs(self):
+        """Jobs that don't match role + field keywords should be filtered out."""
+        from collectors.arbeitnow import ArbeitnowCollector
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "data": [
+                {
+                    "title": "Senior Software Engineer",
+                    "company_name": "TechCo",
+                    "location": "Berlin",
+                    "description": "Build microservices at scale.",
+                    "url": "https://arbeitnow.com/j/irrelevant",
+                    "tags": ["engineering"],
+                },
+            ],
+            "links": {"next": None},
+        }
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with patch("collectors.arbeitnow.requests.Session", return_value=mock_session):
+            collector = ArbeitnowCollector()
+            jobs = collector.collect()
+
+        assert len(jobs) == 0
+
+    def test_handles_empty_response(self):
+        from collectors.arbeitnow import ArbeitnowCollector
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"data": [], "links": {}}
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with patch("collectors.arbeitnow.requests.Session", return_value=mock_session):
+            collector = ArbeitnowCollector()
+            jobs = collector.collect()
+
+        assert jobs == []
