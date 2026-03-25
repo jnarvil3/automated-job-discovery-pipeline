@@ -1,6 +1,19 @@
 from dataclasses import dataclass, field
 from datetime import date
 import hashlib
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
+
+def normalize_url(url: str) -> str:
+    """Strip tracking params and trailing slashes for consistent dedup."""
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    for key in list(params):
+        if key.startswith("utm_") or key in ("ref", "source", "fbclid", "mc_cid", "mc_eid"):
+            del params[key]
+    clean_query = urlencode(params, doseq=True)
+    clean_path = parsed.path.rstrip("/") or "/"
+    return urlunparse(parsed._replace(query=clean_query, path=clean_path))
 
 
 @dataclass
@@ -28,4 +41,4 @@ class Job:
 
     @property
     def id(self) -> str:
-        return hashlib.sha256(self.url.encode()).hexdigest()[:16]
+        return hashlib.sha256(normalize_url(self.url).encode()).hexdigest()[:16]

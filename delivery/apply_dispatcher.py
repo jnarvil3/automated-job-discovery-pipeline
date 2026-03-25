@@ -8,6 +8,7 @@ Strategy priority:
 4. Manual — last resort, user gets a direct link
 """
 
+import base64
 import html
 import json
 import logging
@@ -129,7 +130,7 @@ def _try_email_apply(job: Job, candidate: dict, cover_letter: str,
         with open(resume, "rb") as f:
             email_params["attachments"] = [{
                 "filename": f"{full_name.replace(' ', '_')}_CV.pdf",
-                "content": list(f.read()),
+                "content": base64.b64encode(f.read()).decode(),
             }]
 
     try:

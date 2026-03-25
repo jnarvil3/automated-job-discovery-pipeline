@@ -198,6 +198,24 @@ def run():
         if german_caught:
             log.info("Caught %d German-requirement jobs that slipped through scoring", german_caught)
 
+        # --- Step 4.6: German-title heuristic (Werkstudent/Praktikum without English signals) ---
+        ENGLISH_SIGNALS = ("english-speaking", "english working environment", "no german required",
+                           "english is the working language", "team language is english",
+                           "working language is english", "english only")
+        german_title_demoted = 0
+        for job in scored_jobs:
+            if job.score != "HIGH":
+                continue
+            title_lower = job.title.lower()
+            if "werkstudent" in title_lower or "praktikum" in title_lower:
+                desc_lower = job.description.lower()
+                if not any(signal in desc_lower for signal in ENGLISH_SIGNALS):
+                    job.score = "MEDIUM"
+                    job.score_reason = f"(German-phrased title — verify language requirements) {job.score_reason}"
+                    german_title_demoted += 1
+        if german_title_demoted:
+            log.info("Demoted %d jobs with German-phrased titles to MEDIUM", german_title_demoted)
+
         # --- Step 5: Tier assignment ---
         # TOP tier: best 2-3 HIGH jobs with fit_score >= 7
         MIN_HIGH_FIT = 7
