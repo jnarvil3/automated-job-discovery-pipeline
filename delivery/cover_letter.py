@@ -75,7 +75,8 @@ def generate_cover_letter(job: Job, client: OpenAI | None = None) -> str:
                     f"Role: {job.title}\n"
                     f"Company: {job.company}\n"
                     f"Location: {job.location}\n"
-                    f"Description: {job.description[:1500]}"
+                    + (f"Score reason (what makes this a good match): {job.score_reason}\n" if job.score_reason else "")
+                    + f"Description: {job.description[:1500]}"
                 )},
             ],
         )
