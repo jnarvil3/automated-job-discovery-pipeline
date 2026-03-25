@@ -165,10 +165,8 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
     fetch_results: dict[str, tuple[str | None, str, str]] = {}
     with ThreadPoolExecutor(max_workers=5) as pool:
         futures = {}
-        for i, job in enumerate(jobs):
+        for job in jobs:
             futures[pool.submit(_fetch_for_job, job)] = job
-            if i < len(jobs) - 1:
-                time.sleep(0.5)
 
         for future in as_completed(futures):
             job, full_text, final_url, raw_html = future.result()

@@ -65,6 +65,7 @@ class HimalayasCollector(BaseCollector):
                         description=desc[:2000],
                         url=link,
                         source="himalayas",
+                        posted_date=item.get("pubDate", ""),
                     ))
             except Exception as e:
                 log.warning("Error for '%s': %s", query, e)

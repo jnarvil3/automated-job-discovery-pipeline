@@ -55,7 +55,7 @@ def _in_memory_db() -> sqlite3.Connection:
             ats_platform TEXT DEFAULT '', ats_job_id TEXT DEFAULT '',
             ats_board_token TEXT DEFAULT '',
             apply_method TEXT DEFAULT '', apply_attempts INTEGER DEFAULT 0,
-            apply_error TEXT DEFAULT ''
+            apply_error TEXT DEFAULT '', posted_date TEXT DEFAULT ''
         )
     """)
     conn.execute("""

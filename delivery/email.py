@@ -1,8 +1,9 @@
 import html
 import logging
 import os
+import re
 import resend
-from datetime import date
+from datetime import date, datetime
 from core.models import Job
 
 log = logging.getLogger(__name__)
@@ -113,11 +114,37 @@ def _job_card(num: int, job: Job, include_cover_letter: bool,
         }.get(job.apply_method, "Auto")
         status_badge = f' <span style="background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 12px;">✅ {method_label}</span>'
 
+    # Freshness badge from posted_date
+    freshness_badge = ""
+    if job.posted_date:
+        try:
+            posted_dt = datetime.fromisoformat(job.posted_date.replace("Z", "+00:00"))
+            delta = datetime.now(posted_dt.tzinfo) if posted_dt.tzinfo else datetime.now()
+            hours_ago = (delta - posted_dt).total_seconds() / 3600
+            if hours_ago < 24:
+                freshness_badge = ' <span style="background: #fff3cd; color: #856404; padding: 1px 6px; border-radius: 4px; font-size: 11px;">🔥 NEW — Posted %dh ago</span>' % int(hours_ago)
+            elif hours_ago < 72:
+                days = int(hours_ago / 24)
+                freshness_badge = ' <span style="color: #888; font-size: 11px;">Posted %d day%s ago</span>' % (days, "s" if days != 1 else "")
+            elif hours_ago < 168:
+                days = int(hours_ago / 24)
+                freshness_badge = ' <span style="color: #aaa; font-size: 11px;">Posted %d days ago</span>' % days
+        except (ValueError, TypeError):
+            pass
+
+    # Clean up internal prefixes for human-readable display
+    display_reason = re.sub(
+        r"^(Post-score rejection: |Auto-rejected: |\(Fit \d+/10 — below threshold\) "
+        r"|\(Demoted from TOP — fit \d+/10\) |\(Marketing-only — capped at MEDIUM\) "
+        r"|\(German-phrased title — verify language requirements\) )",
+        "", job.score_reason,
+    )
+
     card = f"""
     <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
-        <strong>{num}. {html.escape(job.title)}</strong>{status_badge}{extra_html}<br>
+        <strong>{num}. {html.escape(job.title)}</strong>{status_badge}{freshness_badge}{extra_html}<br>
         🏢 {html.escape(job.company)} · 📍 {html.escape(job.location)}<br>
-        <em>{html.escape(job.score_reason)}</em><br>
+        <em>{html.escape(display_reason)}</em><br>
         <a href="{html.escape(job.url)}">→ View posting</a>
     """
     if include_cover_letter and job.cover_letter:

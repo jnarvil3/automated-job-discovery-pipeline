@@ -81,6 +81,7 @@ class ArbeitnowCollector(BaseCollector):
                             description=item.get("description", "")[:2000],
                             url=item_url,
                             source="arbeitnow",
+                            posted_date=item.get("created_at", ""),
                         ))
 
                 if not data.get("links", {}).get("next"):

@@ -32,7 +32,8 @@ def get_connection() -> sqlite3.Connection:
             ats_board_token TEXT DEFAULT '',
             apply_method TEXT DEFAULT '',
             apply_attempts INTEGER DEFAULT 0,
-            apply_error TEXT DEFAULT ''
+            apply_error TEXT DEFAULT '',
+            posted_date TEXT DEFAULT ''
         )
     """)
 
@@ -48,6 +49,9 @@ def get_connection() -> sqlite3.Connection:
         )
     """)
 
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_found_date ON jobs(found_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
+
     # Migrate existing tables that lack new columns
     _migrate_columns = [
         ("fit_score", "INTEGER DEFAULT 0"),
@@ -58,6 +62,7 @@ def get_connection() -> sqlite3.Connection:
         ("apply_method", "TEXT DEFAULT ''"),
         ("apply_attempts", "INTEGER DEFAULT 0"),
         ("apply_error", "TEXT DEFAULT ''"),
+        ("posted_date", "TEXT DEFAULT ''"),
     ]
     for col_name, col_type in _migrate_columns:
         try:
@@ -88,8 +93,9 @@ def save_job(conn: sqlite3.Connection, job: Job):
         """INSERT INTO jobs
            (id, source, title, company, location, description, url, score, fit_score,
             score_reason, cover_letter, found_date, status, apply_email,
-            ats_platform, ats_job_id, ats_board_token, apply_method, apply_attempts, apply_error)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ats_platform, ats_job_id, ats_board_token, apply_method, apply_attempts, apply_error,
+            posted_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
                score = excluded.score,
                fit_score = excluded.fit_score,
@@ -99,12 +105,13 @@ def save_job(conn: sqlite3.Connection, job: Job):
                status = CASE WHEN excluded.status NOT IN ('new', '') THEN excluded.status ELSE jobs.status END,
                apply_method = CASE WHEN excluded.apply_method != '' THEN excluded.apply_method ELSE jobs.apply_method END,
                apply_attempts = MAX(excluded.apply_attempts, jobs.apply_attempts),
-               apply_error = CASE WHEN excluded.apply_error != '' THEN excluded.apply_error ELSE jobs.apply_error END""",
+               apply_error = CASE WHEN excluded.apply_error != '' THEN excluded.apply_error ELSE jobs.apply_error END,
+               posted_date = CASE WHEN excluded.posted_date != '' THEN excluded.posted_date ELSE jobs.posted_date END""",
         (job.id, job.source, job.title, job.company, job.location, job.description,
          job.url, job.score, job.fit_score, job.score_reason, job.cover_letter,
          job.found_date, job.status, job.apply_email,
          job.ats_platform, job.ats_job_id, job.ats_board_token, job.apply_method,
-         job.apply_attempts, job.apply_error),
+         job.apply_attempts, job.apply_error, job.posted_date),
     )
     conn.commit()
 
@@ -132,7 +139,8 @@ def get_retry_candidates(conn: sqlite3.Connection, max_extra_retries: int = 2) -
     rows = conn.execute(
         """SELECT source, title, company, location, description, url, score, fit_score,
                   score_reason, cover_letter, found_date, status, apply_email,
-                  ats_platform, ats_job_id, ats_board_token, apply_method, apply_attempts, apply_error
+                  ats_platform, ats_job_id, ats_board_token, apply_method, apply_attempts, apply_error,
+                  posted_date
            FROM jobs
            WHERE status = 'apply_failed'
              AND apply_attempts < ?
@@ -146,6 +154,7 @@ def get_retry_candidates(conn: sqlite3.Connection, max_extra_retries: int = 2) -
             found_date=r[10], status=r[11], apply_email=r[12],
             ats_platform=r[13], ats_job_id=r[14], ats_board_token=r[15],
             apply_method=r[16], apply_attempts=r[17], apply_error=r[18],
+            posted_date=r[19] or "",
         )
         for r in rows
     ]

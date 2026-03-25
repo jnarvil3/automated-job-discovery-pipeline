@@ -75,6 +75,7 @@ class AdzunaCollector(BaseCollector):
                             description=desc[:2000],
                             url=link,
                             source="adzuna",
+                            posted_date=item.get("created", ""),
                         ))
                 except Exception as e:
                     log.warning("Error for '%s' page %d: %s", query, page, e)

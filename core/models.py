@@ -38,6 +38,7 @@ class Job:
     apply_method: str = ""  # api, browser, email, manual
     apply_attempts: int = 0
     apply_error: str = ""
+    posted_date: str = ""  # ISO date when the job was originally posted
 
     @property
     def id(self) -> str:
