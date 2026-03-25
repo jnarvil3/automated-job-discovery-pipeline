@@ -1026,3 +1026,129 @@ class TestIndeedRSSCollector:
             jobs = collector.collect()
 
         assert jobs == []
+
+
+# ---------------------------------------------------------------------------
+# Enricher tests
+# ---------------------------------------------------------------------------
+
+class TestEnricher:
+    """Tests for core/enricher.py enrich_jobs() with mocked HTTP."""
+
+    def _mock_urlopen(self, html_content, final_url=None, status=200):
+        """Create a mock for urllib.request.urlopen."""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = html_content.encode("utf-8")
+        mock_resp.url = final_url or "https://example.com/job/1"
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        return mock_resp
+
+    def test_german_required_job_rejected(self):
+        """Job with German requirement in description is filtered out."""
+        from core.enricher import enrich_jobs
+
+        job = _make_job(
+            title="Working Student Finance",
+            url="https://example.com/job/german",
+            description="Short desc",
+        )
+
+        html_content = "<html><body>Join our team. Sehr gute Deutschkenntnisse erforderlich. Financial analysis role.</body></html>"
+        mock_resp = self._mock_urlopen(html_content, final_url="https://example.com/job/german")
+
+        with patch("core.enricher.urllib.request.urlopen", return_value=mock_resp):
+            english, german = enrich_jobs([job])
+
+        assert len(german) == 1
+        assert len(english) == 0
+        assert german[0].score == "LOW"
+        assert "German required" in german[0].score_reason
+
+    def test_apply_email_extracted(self):
+        """Apply email is extracted from job description."""
+        from core.enricher import enrich_jobs
+
+        job = _make_job(
+            title="Working Student Finance",
+            url="https://example.com/job/email",
+            description="Short desc",
+        )
+
+        html_content = "<html><body>Working student finance role. Please send your application to hr@greencorp.com for consideration.</body></html>"
+        mock_resp = self._mock_urlopen(html_content, final_url="https://example.com/job/email")
+
+        with patch("core.enricher.urllib.request.urlopen", return_value=mock_resp):
+            english, german = enrich_jobs([job])
+
+        assert len(english) == 1
+        assert english[0].apply_email == "hr@greencorp.com"
+
+    def test_ats_platform_detected(self):
+        """ATS platform is detected from enriched URL."""
+        from core.enricher import enrich_jobs
+
+        job = _make_job(
+            title="Working Student FP&A",
+            url="https://boards.greenhouse.io/testco/jobs/123456",
+            description="Short desc",
+        )
+
+        html_content = "<html><body>FP&A working student needed. English team.</body></html>"
+        mock_resp = self._mock_urlopen(html_content, final_url="https://boards.greenhouse.io/testco/jobs/123456")
+
+        with patch("core.enricher.urllib.request.urlopen", return_value=mock_resp):
+            english, german = enrich_jobs([job])
+
+        assert len(english) == 1
+        assert english[0].ats_platform == "greenhouse"
+        assert english[0].ats_job_id == "123456"
+
+    def test_url_updated_after_redirect(self):
+        """Job URL is updated to the final URL after redirect."""
+        from core.enricher import enrich_jobs
+
+        job = _make_job(
+            title="Working Student Finance",
+            url="https://redirect.example.com/j/short",
+            description="Short desc",
+        )
+
+        html_content = "<html><body>Finance working student position. English only.</body></html>"
+        mock_resp = self._mock_urlopen(html_content, final_url="https://careers.example.com/jobs/12345")
+
+        with patch("core.enricher.urllib.request.urlopen", return_value=mock_resp):
+            english, german = enrich_jobs([job])
+
+        assert len(english) == 1
+        assert english[0].url == "https://careers.example.com/jobs/12345"
+
+    def test_retry_on_http_500(self):
+        """Enricher retries on HTTP 500 errors."""
+        from core.enricher import fetch_full_description
+        import urllib.error
+
+        call_count = 0
+
+        def side_effect(req, timeout=10):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise urllib.error.HTTPError(
+                    url="https://example.com/job/1", code=500,
+                    msg="Server Error", hdrs={}, fp=None,
+                )
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = b"<html><body>Success content</body></html>"
+            mock_resp.url = "https://example.com/job/1"
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            return mock_resp
+
+        with patch("core.enricher.urllib.request.urlopen", side_effect=side_effect):
+            with patch("core.enricher.time.sleep"):  # Skip actual sleep
+                text, url, raw = fetch_full_description("https://example.com/job/1")
+
+        assert call_count == 3
+        assert text is not None
+        assert "Success content" in text
