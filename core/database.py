@@ -79,11 +79,23 @@ def get_connection() -> sqlite3.Connection:
 
 
 def cleanup_duplicates(conn: sqlite3.Connection) -> int:
-    """Remove duplicate jobs by title+company, keeping the earliest entry."""
+    """Remove duplicate jobs by title+company, keeping the most-advanced-status entry."""
     cursor = conn.execute("""
         DELETE FROM jobs WHERE rowid NOT IN (
-            SELECT MIN(rowid) FROM jobs
-            GROUP BY LOWER(TRIM(title)), LOWER(TRIM(company))
+            SELECT rowid FROM (
+                SELECT rowid,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY LOWER(TRIM(title)), LOWER(TRIM(company))
+                           ORDER BY CASE status
+                               WHEN 'auto_applied' THEN 1
+                               WHEN 'apply_failed' THEN 2
+                               WHEN 'quick_apply' THEN 3
+                               WHEN 'new' THEN 4
+                               ELSE 5
+                           END, rowid
+                       ) as rn
+                FROM jobs
+            ) WHERE rn = 1
         )
     """)
     removed = cursor.rowcount
@@ -105,7 +117,7 @@ def job_exists_by_title_company(conn: sqlite3.Connection, title: str, company: s
     return row is not None
 
 
-def save_job(conn: sqlite3.Connection, job: Job):
+def save_job(conn: sqlite3.Connection, job: Job, commit: bool = True):
     conn.execute(
         """INSERT INTO jobs
            (id, source, title, company, location, description, url, score, fit_score,
@@ -114,8 +126,16 @@ def save_job(conn: sqlite3.Connection, job: Job):
             posted_date)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
-               score = excluded.score,
-               fit_score = excluded.fit_score,
+               score = CASE
+                   WHEN jobs.score IN ('', 'new') OR jobs.score IS NULL THEN excluded.score
+                   WHEN excluded.score = 'HIGH' THEN excluded.score
+                   WHEN excluded.score = 'MEDIUM' AND jobs.score != 'HIGH' THEN excluded.score
+                   ELSE jobs.score
+               END,
+               fit_score = CASE
+                   WHEN excluded.fit_score > jobs.fit_score THEN excluded.fit_score
+                   ELSE jobs.fit_score
+               END,
                score_reason = excluded.score_reason,
                description = excluded.description,
                cover_letter = CASE WHEN excluded.cover_letter != '' THEN excluded.cover_letter ELSE jobs.cover_letter END,
@@ -130,7 +150,8 @@ def save_job(conn: sqlite3.Connection, job: Job):
          job.ats_platform, job.ats_job_id, job.ats_board_token, job.apply_method,
          job.apply_attempts, job.apply_error, job.posted_date),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def log_application(conn: sqlite3.Connection, job_id: str, method: str, status: str,

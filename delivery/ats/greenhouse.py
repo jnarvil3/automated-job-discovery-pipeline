@@ -129,10 +129,14 @@ class GreenhouseApplicant(ATSApplicant):
 
         except urllib.error.HTTPError as e:
             error_body = e.read().decode() if e.fp else ""
+            if e.code == 422:
+                message = f"Greenhouse 422: Board may require different payload format or missing required fields — {error_body[:200]}"
+            else:
+                message = f"Greenhouse API error {e.code}: {error_body[:200]}"
             return ApplicationResult(
                 success=False,
                 method="api_greenhouse",
-                message=f"Greenhouse API error {e.code}: {error_body[:200]}",
+                message=message,
                 response_data={"status": e.code, "error": error_body[:500]},
             )
         except Exception as e:

@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.models import Job, normalize_url
-from core.database import get_connection, save_job, job_exists, job_exists_by_title_company, log_application
+from core.database import get_connection, save_job, job_exists, job_exists_by_title_company, log_application, cleanup_duplicates
 from core.enricher import requires_german, extract_apply_email
 from core.ats_detector import detect_ats
 from core.rate_limiter import remaining_applications_today
@@ -1242,3 +1242,46 @@ class TestNormalizeUrl:
 
     def test_empty_query_after_strip(self):
         assert normalize_url("https://x.com/j/1?utm_source=email") == "https://x.com/j/1"
+
+
+class TestCleanupDuplicates:
+    """Tests for core/database.py cleanup_duplicates()."""
+
+    def test_basic_dedup_keeps_one(self):
+        """Two entries with same title+company → only one kept."""
+        conn = _in_memory_db()
+        job1 = _make_job(title="Analyst", company="KPMG", url="https://a.com/1")
+        job2 = _make_job(title="Analyst", company="KPMG", url="https://b.com/2")
+        save_job(conn, job1)
+        save_job(conn, job2)
+        removed = cleanup_duplicates(conn)
+        assert removed == 1
+        rows = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()
+        assert rows[0] == 1
+
+    def test_keeps_auto_applied_over_new(self):
+        """When the earlier entry is 'new' and a later one is 'auto_applied', keep the applied one."""
+        conn = _in_memory_db()
+        job1 = _make_job(title="Analyst", company="KPMG", url="https://a.com/1",
+                         score="LOW", status="new")
+        job2 = _make_job(title="Analyst", company="KPMG", url="https://b.com/2",
+                         score="HIGH", status="auto_applied")
+        save_job(conn, job1)
+        save_job(conn, job2)
+        removed = cleanup_duplicates(conn)
+        assert removed == 1
+        row = conn.execute("SELECT status, score FROM jobs").fetchone()
+        assert row[0] == "auto_applied"
+        assert row[1] == "HIGH"
+
+    def test_no_duplicates_removes_nothing(self):
+        """Distinct title+company pairs are not affected."""
+        conn = _in_memory_db()
+        job1 = _make_job(title="Analyst", company="KPMG", url="https://a.com/1")
+        job2 = _make_job(title="Developer", company="SAP", url="https://b.com/2")
+        save_job(conn, job1)
+        save_job(conn, job2)
+        removed = cleanup_duplicates(conn)
+        assert removed == 0
+        rows = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()
+        assert rows[0] == 2

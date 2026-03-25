@@ -3,6 +3,7 @@ Shared cover letter generation for all apply methods.
 Generates text, PDF, and DOCX versions for ATS uploads.
 """
 
+import functools
 import logging
 import os
 from datetime import date
@@ -90,8 +91,9 @@ def generate_cover_letter(job: Job, client: OpenAI | None = None) -> str:
         return ""
 
 
+@functools.lru_cache(maxsize=1)
 def _load_candidate_name() -> str:
-    """Load candidate name from profile config."""
+    """Load candidate name from profile config (cached after first call)."""
     config_path = Path(__file__).parent.parent / "config" / "profile.yaml"
     try:
         import yaml

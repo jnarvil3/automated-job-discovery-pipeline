@@ -177,3 +177,27 @@
 - [x] Updated all 5 enricher tests to use requests.Session mocks instead of urllib.request mocks
 
 **Test status:** 74 tests, all passing.
+
+## Cycle 9
+
+### Priority 3: Review Feedback (Cycle 8) — All items addressed
+
+**Critical fixes:**
+- [x] C1: Fixed `cleanup_duplicates()` to keep the most-advanced-status entry (auto_applied > apply_failed > quick_apply > new) using ROW_NUMBER() window function instead of MIN(rowid) — prevents deleting applied jobs when an earlier duplicate was scored LOW
+- [x] C2: Fixed `save_job` UPSERT to not downgrade score — score only updates if new value is better (HIGH > MEDIUM > LOW); fit_score only updates if new value is higher. Same downgrade protection as status/cover_letter already had
+- [x] C3: Replaced `<details><summary>` tag in email digest with visible `<div>` with border-top separator — `<details>` is invisible in Gmail, Outlook, Yahoo, and Apple Mail, hiding cover letters from Amane
+
+**High priority fixes:**
+- [x] H1: Sorted eligible_jobs by posted_date (newest first) before auto-apply loop — ensures the 5/day budget goes to fresh postings instead of arbitrary collection order
+- [x] H2: Added `commit=True` parameter to `save_job()`; main.py save loop now passes `commit=False` with a single `conn.commit()` after the loop — eliminates 50+ per-row disk syncs
+- [x] H3: Expanded ENGLISH_SIGNALS tuple from 7 to 17 phrases — added "international team", "company language is english", "german is not required", "german is a plus", etc.
+- [x] H4: Added TestCleanupDuplicates class with 3 tests: basic dedup, auto_applied kept over new, no duplicates unchanged
+- [x] H5: Reduced enricher initial fetch from 5000 to 3000 chars — consistent with the 3000-char truncation at line 194, eliminates fetching/parsing 2000 chars that were discarded
+- [x] H6: Added `@functools.lru_cache(maxsize=1)` to `_load_candidate_name()` in cover_letter.py — eliminates repeated YAML file reads (up to 8 per run)
+
+**Medium priority:**
+- [x] M1: Extracted shared browser verification logic into `delivery/browser/common.py` with `verify_submission()` async function; updated engine.py and personio.py to use it
+- [x] M2: Added specific error guidance for Greenhouse 422 responses — suggests board may require different payload format or missing required fields
+- [x] M3: Reduced Adzuna pagination from 3 pages to 2 pages per query — saves ~15 API calls per run; page 3 results were mostly duplicates
+
+**Test status:** 77 tests, all passing.

@@ -202,6 +202,8 @@ def apply_to_jobs(jobs: list[Job], profile: dict, conn: sqlite3.Connection,
     # Which tiers to auto-apply
     apply_tiers = auto_apply_config.get("tiers", ["MEDIUM"])
     eligible_jobs = [j for j in jobs if j.score in apply_tiers]
+    # Prioritize newest postings so the daily budget goes to fresh listings
+    eligible_jobs.sort(key=lambda j: j.posted_date or "1970-01-01", reverse=True)
 
     if not eligible_jobs:
         log.info("No eligible jobs for auto-apply")

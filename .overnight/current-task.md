@@ -26,3 +26,6 @@
 
 ## Priority 3: Review Feedback (Cycle 7)
 (All completed — see completed.md)
+
+## Priority 3: Review Feedback (Cycle 8)
+(All completed — see completed.md)

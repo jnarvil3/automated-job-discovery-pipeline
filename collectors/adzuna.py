@@ -47,7 +47,7 @@ class AdzunaCollector(BaseCollector):
 
         for query in SEARCHES:
             encoded_query = urllib.parse.quote(query)
-            for page in range(1, 4):  # pages 1-3
+            for page in range(1, 3):  # pages 1-2
                 try:
                     url = f"{API_BASE}/{page}?app_id={self.app_id}&app_key={self.app_key}&what={encoded_query}&results_per_page=20"
                     resp = session.get(url, timeout=15)

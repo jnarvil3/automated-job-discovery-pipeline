@@ -162,10 +162,10 @@ def _job_card(num: int, job: Job, include_cover_letter: bool,
     if include_cover_letter and job.cover_letter:
         label = "📝 Letter Sent" if show_auto_applied else "📝 Draft Cover Letter"
         card += f"""
-        <details style="margin-top: 10px;">
-            <summary>{label}</summary>
-            <pre style="white-space: pre-wrap; font-family: sans-serif; background: #f9f9f9; padding: 10px; border-radius: 4px;">{html.escape(job.cover_letter)}</pre>
-        </details>
+        <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 8px;">
+            <strong style="font-size: 13px; color: #555;">{label}:</strong>
+            <pre style="white-space: pre-wrap; font-family: sans-serif; background: #f9f9f9; padding: 10px; border-radius: 4px; font-size: 13px; line-height: 1.5;">{html.escape(job.cover_letter)}</pre>
+        </div>
         """
     card += "</div>"
     return card

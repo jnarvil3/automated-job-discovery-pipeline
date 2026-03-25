@@ -111,7 +111,7 @@ def fetch_full_description(url: str, max_retries: int = 3) -> tuple[str | None, 
             text = extractor.get_text()
             # Clean up whitespace
             text = re.sub(r"\s+", " ", text).strip()
-            return text[:5000], final_url, raw_html
+            return text[:3000], final_url, raw_html
         except requests.exceptions.HTTPError:
             return None, url, ""
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):

@@ -211,7 +211,12 @@ def run():
         # --- Step 4.6: German-title heuristic (Werkstudent/Praktikum without English signals) ---
         ENGLISH_SIGNALS = ("english-speaking", "english working environment", "no german required",
                            "english is the working language", "team language is english",
-                           "working language is english", "english only")
+                           "working language is english", "english only",
+                           "international team", "company language is english",
+                           "english-speaking company", "all communication in english",
+                           "english is our", "we communicate in english",
+                           "german is not required", "german not required",
+                           "no german necessary", "german is a plus")
         german_title_demoted = 0
         for job in scored_jobs:
             if job.score != "HIGH":
@@ -275,9 +280,10 @@ def run():
         log.info("Saving to database...")
         for job in scored_jobs:
             try:
-                save_job(conn, job)
+                save_job(conn, job, commit=False)
             except sqlite3.IntegrityError as e:
                 log.warning("Failed to save %s at %s: %s", job.title, job.company, e)
+        conn.commit()
 
         # --- Step 7: Send digest ---
         log.info("Sending digest...")

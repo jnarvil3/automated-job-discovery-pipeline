@@ -143,17 +143,13 @@ async def _apply_with_browser(job: Job, candidate: dict, cover_letter: str,
                 await page.screenshot(path=str(screenshot_path))
 
                 # Verify submission result
-                body_text = (await page.inner_text("body")).lower()
-                success_phrases = ["thank you", "received", "successfully", "submitted", "application has been"]
-                error_phrases = ["required", "error", "invalid", "please fill", "mandatory"]
-                has_success = any(p in body_text for p in success_phrases)
-                has_error = any(p in body_text for p in error_phrases)
-
-                if has_error and not has_success:
+                from delivery.browser.common import verify_submission
+                has_error, error_msg = await verify_submission(page)
+                if has_error:
                     await browser.close()
                     return ApplicationResult(
                         success=False, method="browser",
-                        message=f"Form submit may have failed — error indicators found on page",
+                        message=error_msg,
                         response_data={"screenshot": str(screenshot_path), "fields_filled": filled_count},
                     )
 
