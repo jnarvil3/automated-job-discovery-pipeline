@@ -120,6 +120,37 @@ def log_application(conn: sqlite3.Connection, job_id: str, method: str, status: 
     conn.commit()
 
 
+def get_retry_candidates(conn: sqlite3.Connection, max_extra_retries: int = 2) -> list[Job]:
+    """Return jobs that failed to apply but are eligible for cross-run retries.
+
+    Criteria:
+    - status = 'apply_failed'
+    - apply_attempts < max_retries (3) + max_extra_retries
+    - found_date within last 14 days (stale postings aren't worth retrying)
+    """
+    max_attempts = 3 + max_extra_retries
+    rows = conn.execute(
+        """SELECT source, title, company, location, description, url, score, fit_score,
+                  score_reason, cover_letter, found_date, status, apply_email,
+                  ats_platform, ats_job_id, ats_board_token, apply_method, apply_attempts, apply_error
+           FROM jobs
+           WHERE status = 'apply_failed'
+             AND apply_attempts < ?
+             AND found_date >= date('now', '-14 days')""",
+        (max_attempts,),
+    ).fetchall()
+    return [
+        Job(
+            source=r[0], title=r[1], company=r[2], location=r[3], description=r[4],
+            url=r[5], score=r[6], fit_score=r[7], score_reason=r[8], cover_letter=r[9],
+            found_date=r[10], status=r[11], apply_email=r[12],
+            ats_platform=r[13], ats_job_id=r[14], ats_board_token=r[15],
+            apply_method=r[16], apply_attempts=r[17], apply_error=r[18],
+        )
+        for r in rows
+    ]
+
+
 def update_score(conn: sqlite3.Connection, job_id: str, score: str, reason: str):
     conn.execute("UPDATE jobs SET score = ?, score_reason = ? WHERE id = ?", (score, reason, job_id))
     conn.commit()

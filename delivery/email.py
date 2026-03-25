@@ -8,7 +8,7 @@ from core.models import Job
 log = logging.getLogger(__name__)
 
 
-def build_digest(jobs: list[Job]) -> tuple[str, str]:
+def build_digest(jobs: list[Job], collector_stats: dict | None = None) -> tuple[str, str]:
     """Build email subject and HTML body from scored jobs."""
     today = date.today().strftime("%b %d, %Y")
 
@@ -74,6 +74,12 @@ def build_digest(jobs: list[Job]) -> tuple[str, str]:
         parts.append(f"<p><em>Skipped {len(low)} low-fit jobs (require German, wrong field, or senior roles)</em></p>")
 
     parts.append("<hr>")
+    if collector_stats:
+        sources = ", ".join(
+            f"{name} ({count})" if isinstance(count, int) else f"{name} (FAILED)"
+            for name, count in collector_stats.items()
+        )
+        parts.append(f"<p style='color: #888; font-size: 12px;'>Sources: {html.escape(sources)}</p>")
     parts.append("<p style='color: #888; font-size: 12px;'>Automated by Amane's Job Discovery Pipeline</p>")
 
     inner = "\n".join(parts)
@@ -126,7 +132,7 @@ def _job_card(num: int, job: Job, include_cover_letter: bool,
     return card
 
 
-def send_digest(jobs: list[Job], recipient_email: str):
+def send_digest(jobs: list[Job], recipient_email: str, collector_stats: dict | None = None):
     """Send the digest email via Resend API."""
     if not jobs:
         log.info("No jobs to send.")
@@ -135,7 +141,7 @@ def send_digest(jobs: list[Job], recipient_email: str):
     api_key = os.environ.get("RESEND_API_KEY")
     if not api_key:
         log.warning("RESEND_API_KEY not set — printing digest to stdout instead.")
-        subject, body = build_digest(jobs)
+        subject, body = build_digest(jobs, collector_stats)
         log.info("Subject: %s", subject)
         for job in jobs:
             log.info("  [%s] %s at %s (%s) — %s — %s", job.score, job.title, job.company, job.location, job.score_reason, job.url)
@@ -144,14 +150,14 @@ def send_digest(jobs: list[Job], recipient_email: str):
     sender_email = os.environ.get("SENDER_EMAIL", "")
     if not sender_email:
         log.warning("SENDER_EMAIL not set — refusing to send from test domain. Set SENDER_EMAIL env var.")
-        subject, body = build_digest(jobs)
+        subject, body = build_digest(jobs, collector_stats)
         log.info("Subject: %s", subject)
         for job in jobs:
             log.info("  [%s] %s at %s (%s) — %s — %s", job.score, job.title, job.company, job.location, job.score_reason, job.url)
         return
 
     resend.api_key = api_key
-    subject, body = build_digest(jobs)
+    subject, body = build_digest(jobs, collector_stats)
 
     try:
         result = resend.Emails.send({

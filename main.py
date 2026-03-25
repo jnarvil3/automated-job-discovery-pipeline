@@ -34,7 +34,7 @@ from collectors.arbeitnow import ArbeitnowCollector
 from collectors.adzuna import AdzunaCollector
 from collectors.himalayas import HimalayasCollector
 from collectors.indeed_rss import IndeedRSSCollector
-from core.database import get_connection, job_exists, job_exists_by_title_company, save_job, get_todays_jobs
+from core.database import get_connection, job_exists, job_exists_by_title_company, save_job, get_todays_jobs, get_retry_candidates
 from core.enricher import enrich_jobs, requires_german
 from core.scorer import score_jobs
 from delivery.apply_dispatcher import apply_to_jobs
@@ -88,6 +88,12 @@ def run():
     log.info("Amane's Job Pipeline — %s", date.today().isoformat())
     log.info("=" * 50)
 
+    # Check for pause file
+    pause_file = Path(__file__).parent / "data" / ".pause"
+    if pause_file.exists():
+        log.info("Pipeline paused (data/.pause exists — delete to resume)")
+        sys.exit(0)
+
     profile = load_profile()
     validate_startup(profile)
     conn = get_connection()
@@ -103,12 +109,19 @@ def run():
         ]
 
         all_jobs = []
+        collector_stats = {}
         for collector in collectors:
+            name = collector.__class__.__name__
             try:
-                all_jobs.extend(collector.collect())
+                collected = collector.collect()
+                all_jobs.extend(collected)
+                collector_stats[name] = len(collected)
             except Exception as e:
-                log.error("%s failed: %s", collector.__class__.__name__, e)
+                log.error("%s failed: %s", name, e)
+                collector_stats[name] = "FAILED"
 
+        stats_str = ", ".join(f"{k}={v}" for k, v in collector_stats.items())
+        log.info("Collector summary: %s", stats_str)
         log.info("Total collected: %d", len(all_jobs))
 
         # --- Step 2: Deduplicate ---
@@ -215,7 +228,17 @@ def run():
                     if job.cover_letter:
                         log.info("  Cover letter: %s at %s", job.title, job.company)
 
-        # --- Step 5.5: Auto-apply ---
+        # --- Step 5.5: Retry previously failed applications ---
+        retry_jobs = get_retry_candidates(conn)
+        if retry_jobs:
+            log.info("Found %d failed jobs eligible for retry", len(retry_jobs))
+            # Add retry candidates to scored_jobs so they get re-attempted
+            existing_ids = {j.id for j in scored_jobs}
+            for rj in retry_jobs:
+                if rj.id not in existing_ids:
+                    scored_jobs.append(rj)
+
+        # --- Step 5.6: Auto-apply ---
         log.info("Auto-applying...")
         dry_run = "--send" not in sys.argv
         scored_jobs = apply_to_jobs(scored_jobs, profile, conn, dry_run=dry_run)
@@ -238,12 +261,12 @@ def run():
             log.info("No HIGH or MEDIUM jobs today — skipping email.")
         elif not recipient:
             log.warning("No recipient email configured — printing to stdout")
-            send_digest(relevant_jobs, "")
+            send_digest(relevant_jobs, "", collector_stats=collector_stats)
         elif "--send" in sys.argv:
-            send_digest(relevant_jobs, recipient)
+            send_digest(relevant_jobs, recipient, collector_stats=collector_stats)
         else:
             log.info("[DRY RUN] Use --send to actually email. Printing to stdout:")
-            send_digest(relevant_jobs, "")
+            send_digest(relevant_jobs, "", collector_stats=collector_stats)
 
         log.info("Done.")
     finally:

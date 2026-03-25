@@ -8,6 +8,7 @@ import re
 import time
 import urllib.request
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 from core.models import Job
 from core.ats_detector import detect_ats
@@ -146,6 +147,12 @@ def extract_apply_email(text: str) -> str:
     return ""
 
 
+def _fetch_for_job(job: Job) -> tuple[Job, str | None, str, str]:
+    """Fetch full description for a single job. Thread-safe helper."""
+    full_text, final_url, raw_html = fetch_full_description(job.url)
+    return job, full_text, final_url, raw_html
+
+
 def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
     """
     Fetch full descriptions and filter out jobs requiring German.
@@ -154,10 +161,24 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
     english_jobs = []
     german_jobs = []
 
+    # Parallel fetch with staggered submissions to avoid overwhelming servers
+    fetch_results: dict[str, tuple[str | None, str, str]] = {}
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {}
+        for i, job in enumerate(jobs):
+            futures[pool.submit(_fetch_for_job, job)] = job
+            if i < len(jobs) - 1:
+                time.sleep(0.5)
+
+        for future in as_completed(futures):
+            job, full_text, final_url, raw_html = future.result()
+            fetch_results[job.url] = (full_text, final_url, raw_html)
+
+    # Process results sequentially (filtering, ATS detection)
     for i, job in enumerate(jobs):
         log.info("[%d/%d] Checking %s at %s...", i+1, len(jobs), job.title, job.company)
 
-        full_text, final_url, raw_html = fetch_full_description(job.url)
+        full_text, final_url, raw_html = fetch_results.get(job.url, (None, job.url, ""))
 
         # Update URL to canonical (post-redirect) URL for consistent ID hashing
         if full_text and final_url != job.url:
