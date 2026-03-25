@@ -39,6 +39,7 @@ class IndeedRSSCollector(BaseCollector):
                         description=desc,
                         url=link,
                         source="indeed",
+                        posted_date=entry.get("published", ""),
                     ))
             except Exception as e:
                 log.warning("Error fetching %s: %s", url, e)

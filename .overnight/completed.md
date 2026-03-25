@@ -148,3 +148,32 @@
 - [x] M4: Added job freshness tracking — posted_date field in Job model, extracted from all collectors (Adzuna created, Arbeitnow created_at, Himalayas pubDate), shown as freshness badges in email digest
 
 **Test status:** 63 tests, all passing.
+
+## Cycle 8
+
+### Priority 3: Review Feedback (Cycle 7) — All items addressed
+
+**Critical fixes:**
+- [x] C1: Fixed last_name in profile.yaml from "Dias de Azevedo" to "Aguiar Dias de Azevedo" — every auto-application was using the wrong name
+- [x] C2: Migrated core/enricher.py from urllib.request to requests.Session — module-level `_session` for connection pooling across ThreadPoolExecutor workers, replacing 50+ fresh TCP/TLS handshakes per run
+- [x] C3: Fixed ATS detection fallback — saved `original_url` before `job.url = final_url` overwrite so the fallback `detect_ats()` call actually checks the pre-redirect URL instead of the same final URL
+
+**High priority fixes:**
+- [x] H1: Added `cleanup_duplicates(conn)` to database.py — removes cross-run duplicates by title+company (e.g. KPMG's 11 duplicate entries); called at pipeline startup
+- [x] H2: Added `test_fit_score_parsed_from_response` test; added one-time backfill in get_connection to set fit_score=8 for HIGH and fit_score=5 for MEDIUM jobs that had fit_score=0
+- [x] H3: Fixed freshness badge date parsing — added `_parse_posted_date()` helper with ISO 8601 + RSS date format support via `parsedate_to_datetime`; renamed `delta` to `now` for clarity
+- [x] H4: Added TestFreshnessBadge class with 6 tests: new badge for recent job, no badge for old job, empty posted_date, invalid date, RSS format parsing, ISO format parsing
+- [x] H5: Added TestNormalizeUrl class with 4 tests: utm param stripping, trailing slash, clean URL preservation, empty query after strip
+- [x] H6: Parallelized scorer with ThreadPoolExecutor(max_workers=5) — extracted `_score_single_job()` helper, marketing cap logic remains sequential
+
+**Medium priority:**
+- [x] M1: Removed unused `generate_cover_letter_docx` import from apply_dispatcher.py
+- [x] M2: Renamed `delta` to `now` in email.py freshness badge (done as part of H3)
+- [x] M3: Added `posted_date=entry.get("published", "")` to Indeed RSS collector Job constructor
+- [x] M4: Added startup warning in validate_startup() when linkedin_url is empty
+- [x] M5: Renamed `title` to `title_lower` in arbeitnow.py to avoid variable shadowing
+
+**Also fixed:**
+- [x] Updated all 5 enricher tests to use requests.Session mocks instead of urllib.request mocks
+
+**Test status:** 74 tests, all passing.

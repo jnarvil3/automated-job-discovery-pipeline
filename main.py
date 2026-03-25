@@ -34,7 +34,7 @@ from collectors.arbeitnow import ArbeitnowCollector
 from collectors.adzuna import AdzunaCollector
 from collectors.himalayas import HimalayasCollector
 from collectors.indeed_rss import IndeedRSSCollector
-from core.database import get_connection, job_exists, job_exists_by_title_company, save_job, get_retry_candidates
+from core.database import get_connection, job_exists, job_exists_by_title_company, save_job, get_retry_candidates, cleanup_duplicates
 from core.enricher import enrich_jobs, requires_german
 from core.scorer import score_jobs
 from delivery.apply_dispatcher import apply_to_jobs
@@ -74,6 +74,11 @@ def validate_startup(profile: dict):
     if not profile.get("sender_email"):
         warnings.append("sender_email is empty in profile.yaml — auto-apply emails will use the Resend test domain")
 
+    # Warn if linkedin_url is empty
+    candidate = profile.get("candidate", {})
+    if not candidate.get("linkedin_url") and not os.environ.get("AMANE_LINKEDIN"):
+        warnings.append("linkedin_url is empty — applications will be weaker without a LinkedIn profile link")
+
     for w in warnings:
         log.warning(w)
     if errors:
@@ -98,6 +103,11 @@ def run():
     validate_startup(profile)
     conn = get_connection()
     try:
+        # --- Step 0: Clean up cross-run duplicates ---
+        removed = cleanup_duplicates(conn)
+        if removed:
+            log.info("Cleaned up %d duplicate jobs from database", removed)
+
         # --- Step 1: Collect from all sources ---
         log.info("Collecting jobs...")
 

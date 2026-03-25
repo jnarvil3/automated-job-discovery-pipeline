@@ -70,8 +70,25 @@ def get_connection() -> sqlite3.Connection:
         except Exception:
             pass
 
+    # One-time backfill: set fit_score for jobs scored before fit_score was wired in
+    conn.execute("UPDATE jobs SET fit_score = 8 WHERE fit_score = 0 AND score = 'HIGH'")
+    conn.execute("UPDATE jobs SET fit_score = 5 WHERE fit_score = 0 AND score = 'MEDIUM'")
+
     conn.commit()
     return conn
+
+
+def cleanup_duplicates(conn: sqlite3.Connection) -> int:
+    """Remove duplicate jobs by title+company, keeping the earliest entry."""
+    cursor = conn.execute("""
+        DELETE FROM jobs WHERE rowid NOT IN (
+            SELECT MIN(rowid) FROM jobs
+            GROUP BY LOWER(TRIM(title)), LOWER(TRIM(company))
+        )
+    """)
+    removed = cursor.rowcount
+    conn.commit()
+    return removed
 
 
 def job_exists(conn: sqlite3.Connection, job: Job) -> bool:

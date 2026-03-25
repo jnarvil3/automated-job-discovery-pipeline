@@ -13,13 +13,13 @@ from unittest.mock import patch, MagicMock
 # Ensure project root is importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.models import Job
+from core.models import Job, normalize_url
 from core.database import get_connection, save_job, job_exists, job_exists_by_title_company, log_application
 from core.enricher import requires_german, extract_apply_email
 from core.ats_detector import detect_ats
 from core.rate_limiter import remaining_applications_today
 from delivery.cover_letter import _format_full_letter
-from delivery.email import build_digest, send_digest
+from delivery.email import build_digest, send_digest, _parse_posted_date
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +296,15 @@ class TestScoringPostProcessing:
         )
         # Has both marketing AND core field keywords → not capped
         assert scored[0].score == "HIGH"
+
+    def test_fit_score_parsed_from_response(self):
+        """fit_score should be extracted from GPT response."""
+        job = _make_job()
+        scored = self._score_with_mock(
+            [job],
+            '{"score": "HIGH", "fit_score": 9, "reason": "match"}',
+        )
+        assert scored[0].fit_score == 9
 
 
 # ---------------------------------------------------------------------------
@@ -1035,13 +1044,13 @@ class TestIndeedRSSCollector:
 class TestEnricher:
     """Tests for core/enricher.py enrich_jobs() with mocked HTTP."""
 
-    def _mock_urlopen(self, html_content, final_url=None, status=200):
-        """Create a mock for urllib.request.urlopen."""
+    def _mock_session_get(self, html_content, final_url=None, status=200):
+        """Create a mock requests.Response for _session.get()."""
         mock_resp = MagicMock()
-        mock_resp.read.return_value = html_content.encode("utf-8")
+        mock_resp.status_code = status
+        mock_resp.text = html_content
         mock_resp.url = final_url or "https://example.com/job/1"
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.raise_for_status = MagicMock()
         return mock_resp
 
     def test_german_required_job_rejected(self):
@@ -1055,9 +1064,10 @@ class TestEnricher:
         )
 
         html_content = "<html><body>Join our team. Sehr gute Deutschkenntnisse erforderlich. Financial analysis role.</body></html>"
-        mock_resp = self._mock_urlopen(html_content, final_url="https://example.com/job/german")
+        mock_resp = self._mock_session_get(html_content, final_url="https://example.com/job/german")
 
-        with patch("core.enricher.urllib.request.urlopen", return_value=mock_resp):
+        with patch("core.enricher._session") as mock_session:
+            mock_session.get.return_value = mock_resp
             english, german = enrich_jobs([job])
 
         assert len(german) == 1
@@ -1076,9 +1086,10 @@ class TestEnricher:
         )
 
         html_content = "<html><body>Working student finance role. Please send your application to hr@greencorp.com for consideration.</body></html>"
-        mock_resp = self._mock_urlopen(html_content, final_url="https://example.com/job/email")
+        mock_resp = self._mock_session_get(html_content, final_url="https://example.com/job/email")
 
-        with patch("core.enricher.urllib.request.urlopen", return_value=mock_resp):
+        with patch("core.enricher._session") as mock_session:
+            mock_session.get.return_value = mock_resp
             english, german = enrich_jobs([job])
 
         assert len(english) == 1
@@ -1095,9 +1106,10 @@ class TestEnricher:
         )
 
         html_content = "<html><body>FP&A working student needed. English team.</body></html>"
-        mock_resp = self._mock_urlopen(html_content, final_url="https://boards.greenhouse.io/testco/jobs/123456")
+        mock_resp = self._mock_session_get(html_content, final_url="https://boards.greenhouse.io/testco/jobs/123456")
 
-        with patch("core.enricher.urllib.request.urlopen", return_value=mock_resp):
+        with patch("core.enricher._session") as mock_session:
+            mock_session.get.return_value = mock_resp
             english, german = enrich_jobs([job])
 
         assert len(english) == 1
@@ -1115,9 +1127,10 @@ class TestEnricher:
         )
 
         html_content = "<html><body>Finance working student position. English only.</body></html>"
-        mock_resp = self._mock_urlopen(html_content, final_url="https://careers.example.com/jobs/12345")
+        mock_resp = self._mock_session_get(html_content, final_url="https://careers.example.com/jobs/12345")
 
-        with patch("core.enricher.urllib.request.urlopen", return_value=mock_resp):
+        with patch("core.enricher._session") as mock_session:
+            mock_session.get.return_value = mock_resp
             english, german = enrich_jobs([job])
 
         assert len(english) == 1
@@ -1126,29 +1139,106 @@ class TestEnricher:
     def test_retry_on_http_500(self):
         """Enricher retries on HTTP 500 errors."""
         from core.enricher import fetch_full_description
-        import urllib.error
+        import requests as req_lib
 
         call_count = 0
 
-        def side_effect(req, timeout=10):
+        def side_effect(url, timeout=10):
             nonlocal call_count
             call_count += 1
-            if call_count < 3:
-                raise urllib.error.HTTPError(
-                    url="https://example.com/job/1", code=500,
-                    msg="Server Error", hdrs={}, fp=None,
-                )
             mock_resp = MagicMock()
-            mock_resp.read.return_value = b"<html><body>Success content</body></html>"
-            mock_resp.url = "https://example.com/job/1"
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
+            if call_count < 3:
+                mock_resp.status_code = 500
+                mock_resp.raise_for_status.side_effect = req_lib.exceptions.HTTPError()
+            else:
+                mock_resp.status_code = 200
+                mock_resp.url = "https://example.com/job/1"
+                mock_resp.text = "<html><body>Success content</body></html>"
+                mock_resp.raise_for_status = MagicMock()
             return mock_resp
 
-        with patch("core.enricher.urllib.request.urlopen", side_effect=side_effect):
+        with patch("core.enricher._session") as mock_session:
+            mock_session.get.side_effect = side_effect
             with patch("core.enricher.time.sleep"):  # Skip actual sleep
                 text, url, raw = fetch_full_description("https://example.com/job/1")
 
         assert call_count == 3
         assert text is not None
         assert "Success content" in text
+
+
+# ---------------------------------------------------------------------------
+# Freshness badge tests
+# ---------------------------------------------------------------------------
+
+class TestFreshnessBadge:
+    """Tests for freshness badge rendering and date parsing."""
+
+    def test_new_badge_for_recent_job(self):
+        """Job posted 2 hours ago should show NEW badge."""
+        from datetime import datetime as dt, timedelta, timezone
+        posted = (dt.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        job = _make_job()
+        job.score = "HIGH"
+        job.posted_date = posted
+        _, body = build_digest([job])
+        assert "NEW" in body
+
+    def test_no_new_badge_for_old_job(self):
+        """Job posted 10 days ago should not show NEW badge."""
+        from datetime import datetime as dt, timedelta, timezone
+        posted = (dt.now(timezone.utc) - timedelta(days=10)).isoformat()
+        job = _make_job()
+        job.score = "HIGH"
+        job.posted_date = posted
+        _, body = build_digest([job])
+        assert "NEW" not in body
+
+    def test_no_badge_for_empty_posted_date(self):
+        """Job with empty posted_date should not have any freshness badge."""
+        job = _make_job()
+        job.score = "HIGH"
+        job.posted_date = ""
+        _, body = build_digest([job])
+        assert "Posted" not in body
+        assert "NEW" not in body
+
+    def test_no_badge_for_invalid_date(self):
+        """Job with invalid date string should not crash or show badge."""
+        job = _make_job()
+        job.score = "HIGH"
+        job.posted_date = "not-a-date"
+        _, body = build_digest([job])
+        assert "NEW" not in body
+
+    def test_rss_date_format_parsed(self):
+        """parsedate_to_datetime should handle RSS date format."""
+        result = _parse_posted_date("Thu, 20 Mar 2026 10:00:00 GMT")
+        assert result is not None
+        assert result.year == 2026
+
+    def test_iso_date_format_parsed(self):
+        """fromisoformat should handle ISO 8601 strings."""
+        result = _parse_posted_date("2026-03-20T10:00:00+00:00")
+        assert result is not None
+        assert result.year == 2026
+
+
+# ---------------------------------------------------------------------------
+# normalize_url tests
+# ---------------------------------------------------------------------------
+
+class TestNormalizeUrl:
+    """Tests for core/models.py normalize_url()."""
+
+    def test_strips_utm_params(self):
+        assert normalize_url("https://x.com/j/1?utm_source=email&id=5") == "https://x.com/j/1?id=5"
+
+    def test_strips_trailing_slash(self):
+        assert normalize_url("https://x.com/j/1/") == "https://x.com/j/1"
+
+    def test_preserves_clean_url(self):
+        assert normalize_url("https://x.com/j/1") == "https://x.com/j/1"
+
+    def test_empty_query_after_strip(self):
+        assert normalize_url("https://x.com/j/1?utm_source=email") == "https://x.com/j/1"

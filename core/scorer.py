@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
 from core.models import Job
 
@@ -56,43 +57,52 @@ Also return a fit_score from 1-10 indicating how strong the match is.
 Return: {"score": "HIGH|MEDIUM|LOW", "fit_score": 8, "reason": "one sentence"}"""
 
 
+def _score_single_job(job: Job, client: OpenAI) -> Job:
+    """Score a single job via OpenAI. Thread-safe helper."""
+    try:
+        user_msg = f"Job: {job.title} at {job.company} ({job.location})\n\nDescription:\n{job.description[:1500]}"
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            max_tokens=150,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ],
+        )
+
+        text = response.choices[0].message.content.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+        result = json.loads(text)
+        job.score = result.get("score", "LOW").upper()
+        job.fit_score = int(float(result.get("fit_score", 0)))
+        job.score_reason = result.get("reason", "")
+        log.info("[%s %d/10] %s at %s — %s", job.score, job.fit_score, job.title, job.company, job.score_reason)
+
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        log.error("Failed to parse score for %s: %s", job.title, e)
+        job.score = "LOW"
+        job.score_reason = "Scoring failed — could not parse response"
+    except Exception as e:
+        log.error("API error scoring %s: %s", job.title, e)
+        job.score = "LOW"
+        job.score_reason = "Scoring failed — API error"
+
+    return job
+
+
 def score_jobs(jobs: list[Job]) -> list[Job]:
     if not jobs:
         return jobs
 
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=30)
 
-    for job in jobs:
-        try:
-            user_msg = f"Job: {job.title} at {job.company} ({job.location})\n\nDescription:\n{job.description[:1500]}"
-
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                max_tokens=150,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_msg},
-                ],
-            )
-
-            text = response.choices[0].message.content.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-
-            result = json.loads(text)
-            job.score = result.get("score", "LOW").upper()
-            job.fit_score = int(float(result.get("fit_score", 0)))
-            job.score_reason = result.get("reason", "")
-            log.info("[%s %d/10] %s at %s — %s", job.score, job.fit_score, job.title, job.company, job.score_reason)
-
-        except (json.JSONDecodeError, KeyError, IndexError) as e:
-            log.error("Failed to parse score for %s: %s", job.title, e)
-            job.score = "LOW"
-            job.score_reason = "Scoring failed — could not parse response"
-        except Exception as e:
-            log.error("API error scoring %s: %s", job.title, e)
-            job.score = "LOW"
-            job.score_reason = "Scoring failed — API error"
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {pool.submit(_score_single_job, job, client): job for job in jobs}
+        for future in as_completed(futures):
+            future.result()  # Exceptions already handled inside _score_single_job
 
     # Post-scoring: cap marketing-only roles at MEDIUM
     _marketing_kw = {"marketing", "social media", "content creator", "brand manager", "seo", "sem", "performance marketing"}

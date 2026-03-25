@@ -23,7 +23,7 @@ from core.models import Job
 from core.rate_limiter import remaining_applications_today
 from core.database import log_application
 from core.question_answerer import answer_questions
-from delivery.cover_letter import generate_cover_letter, generate_cover_letter_pdf, generate_cover_letter_docx
+from delivery.cover_letter import generate_cover_letter, generate_cover_letter_pdf
 from delivery.ats.base import ApplicationResult
 from delivery.ats.greenhouse import GreenhouseApplicant
 from delivery.ats.lever import LeverApplicant

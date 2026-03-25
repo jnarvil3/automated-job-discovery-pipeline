@@ -4,9 +4,23 @@ import os
 import re
 import resend
 from datetime import date, datetime
+from email.utils import parsedate_to_datetime
 from core.models import Job
 
 log = logging.getLogger(__name__)
+
+
+def _parse_posted_date(raw: str) -> datetime | None:
+    """Parse posted_date from ISO 8601 or RSS date format."""
+    for parser in [
+        lambda s: datetime.fromisoformat(s.replace("Z", "+00:00")),
+        parsedate_to_datetime,
+    ]:
+        try:
+            return parser(raw)
+        except (ValueError, TypeError):
+            continue
+    return None
 
 
 def build_digest(jobs: list[Job], collector_stats: dict | None = None) -> tuple[str, str]:
@@ -117,10 +131,10 @@ def _job_card(num: int, job: Job, include_cover_letter: bool,
     # Freshness badge from posted_date
     freshness_badge = ""
     if job.posted_date:
-        try:
-            posted_dt = datetime.fromisoformat(job.posted_date.replace("Z", "+00:00"))
-            delta = datetime.now(posted_dt.tzinfo) if posted_dt.tzinfo else datetime.now()
-            hours_ago = (delta - posted_dt).total_seconds() / 3600
+        posted_dt = _parse_posted_date(job.posted_date)
+        if posted_dt:
+            now = datetime.now(posted_dt.tzinfo) if posted_dt.tzinfo else datetime.now()
+            hours_ago = (now - posted_dt).total_seconds() / 3600
             if hours_ago < 24:
                 freshness_badge = ' <span style="background: #fff3cd; color: #856404; padding: 1px 6px; border-radius: 4px; font-size: 11px;">🔥 NEW — Posted %dh ago</span>' % int(hours_ago)
             elif hours_ago < 72:
@@ -129,8 +143,6 @@ def _job_card(num: int, job: Job, include_cover_letter: bool,
             elif hours_ago < 168:
                 days = int(hours_ago / 24)
                 freshness_badge = ' <span style="color: #aaa; font-size: 11px;">Posted %d days ago</span>' % days
-        except (ValueError, TypeError):
-            pass
 
     # Clean up internal prefixes for human-readable display
     display_reason = re.sub(

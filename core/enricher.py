@@ -6,14 +6,21 @@ Also detects ATS platforms and extracts application emails.
 import logging
 import re
 import time
-import urllib.request
-import urllib.error
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 from core.models import Job
 from core.ats_detector import detect_ats
 
 log = logging.getLogger(__name__)
+
+# Module-level session for connection pooling across ThreadPoolExecutor workers
+_session = requests.Session()
+_session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml",
+    "Accept-Language": "en-US,en;q=0.9",
+})
 
 # Patterns that indicate German is required
 GERMAN_REQUIRED_PATTERNS = [
@@ -86,31 +93,28 @@ def fetch_full_description(url: str, max_retries: int = 3) -> tuple[str | None, 
     Returns:
         (text_content, final_url_after_redirects, raw_html)
     """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-
     for attempt in range(max_retries):
         try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                final_url = resp.url  # URL after redirects
-                html = resp.read().decode("utf-8", errors="ignore")
+            resp = _session.get(url, timeout=10)
+            if resp.status_code >= 500:
+                if attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                return None, url, ""
+            resp.raise_for_status()
+
+            final_url = resp.url
+            raw_html = resp.text
 
             extractor = TextExtractor()
-            extractor.feed(html)
+            extractor.feed(raw_html)
             text = extractor.get_text()
             # Clean up whitespace
             text = re.sub(r"\s+", " ", text).strip()
-            return text[:5000], final_url, html
-        except urllib.error.HTTPError as e:
-            if e.code >= 500 and attempt < max_retries - 1:
-                time.sleep(2 * (attempt + 1))
-                continue
+            return text[:5000], final_url, raw_html
+        except requests.exceptions.HTTPError:
             return None, url, ""
-        except (TimeoutError, urllib.error.URLError) as e:
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
             if attempt < max_retries - 1:
                 time.sleep(2 * (attempt + 1))
                 continue
@@ -178,6 +182,9 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
 
         full_text, final_url, raw_html = fetch_results.get(job.url, (None, job.url, ""))
 
+        # Save original URL before overwriting (needed for ATS fallback detection)
+        original_url = job.url
+
         # Update URL to canonical (post-redirect) URL for consistent ID hashing
         if full_text and final_url != job.url:
             job.url = final_url
@@ -200,8 +207,8 @@ def enrich_jobs(jobs: list[Job]) -> tuple[list[Job], list[Job]]:
         # Detect ATS platform from final URL (after redirects) and page HTML
         platform, job_id, board_token = detect_ats(final_url, raw_html)
         if not platform:
-            # Also try the original URL
-            platform, job_id, board_token = detect_ats(job.url)
+            # Also try the original pre-redirect URL
+            platform, job_id, board_token = detect_ats(original_url)
         job.ats_platform = platform
         job.ats_job_id = job_id
         job.ats_board_token = board_token

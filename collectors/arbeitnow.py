@@ -63,10 +63,10 @@ class ArbeitnowCollector(BaseCollector):
                     if not item_url or item_url in seen_urls:
                         continue
 
-                    title = item.get("title", "").lower()
+                    title_lower = item.get("title", "").lower()
                     desc = item.get("description", "").lower()
                     tags = " ".join(item.get("tags", [])).lower()
-                    combined = f"{title} {desc} {tags}"
+                    combined = f"{title_lower} {desc} {tags}"
 
                     # Safety net: still require role + field keyword match
                     has_role = any(kw in combined for kw in ROLE_KEYWORDS)
