@@ -7,6 +7,7 @@ SYSTEM_PROMPT = """You are a strict job matching assistant. Score jobs for a spe
 
 CANDIDATE:
 - International master's student in Germany (Brazilian, finishing thesis this semester)
+- 8+ years professional experience in finance, impact investing, program management, and consulting. She has more experience than most working students — roles requiring 2-3 years experience are fine.
 - German level: A1 only. She CANNOT work in roles requiring German.
 - Visa requires student-compatible employment
 

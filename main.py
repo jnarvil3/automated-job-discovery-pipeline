@@ -15,7 +15,9 @@ from datetime import date
 from pathlib import Path
 
 import yaml
-from langdetect import detect, LangDetectException
+from langdetect import detect, DetectorFactory, LangDetectException
+
+DetectorFactory.seed = 0
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
