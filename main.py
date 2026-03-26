@@ -34,8 +34,10 @@ from collectors.arbeitnow import ArbeitnowCollector
 from collectors.adzuna import AdzunaCollector
 from collectors.himalayas import HimalayasCollector
 from collectors.indeed_rss import IndeedRSSCollector
+from core.ats_detector import detect_ats
 from core.database import get_connection, job_exists, job_exists_by_title_company, save_job, get_retry_candidates, cleanup_duplicates
-from core.enricher import enrich_jobs, requires_german
+from core.enricher import enrich_jobs, fetch_full_description, requires_german
+from core.models import Job
 from core.scorer import score_jobs
 from delivery.apply_dispatcher import apply_to_jobs
 from delivery.cover_letter import generate_cover_letter
@@ -260,6 +262,47 @@ def run():
                     job.cover_letter = generate_cover_letter(job)
                     if job.cover_letter:
                         log.info("  Cover letter: %s at %s", job.title, job.company)
+
+        # --- Step 5.4: Load existing unapplied HIGH/MEDIUM jobs from DB ---
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM jobs WHERE score IN ('HIGH','MEDIUM') AND status IN ('new','scored','enriched') "
+        )
+        existing_cols = [desc[0] for desc in cursor.description]
+        for row in cursor.fetchall():
+            row_dict = dict(zip(existing_cols, row))
+            # Skip if already in this run's batch
+            if any(j.url == row_dict.get("url") for j in scored_jobs):
+                continue
+            ej = Job(
+                title=row_dict["title"], company=row_dict["company"],
+                location=row_dict["location"], url=row_dict["url"],
+                source=row_dict["source"], description=row_dict.get("description", ""),
+            )
+            ej.score = row_dict["score"]
+            ej.fit_score = row_dict.get("fit_score", 0)
+            ej.score_reason = row_dict.get("score_reason", "")
+            ej.cover_letter = row_dict.get("cover_letter", "")
+            ej.status = row_dict.get("status", "new")
+            ej.ats_platform = row_dict.get("ats_platform", "")
+            ej.apply_method = row_dict.get("apply_method", "")
+            ej.apply_email = row_dict.get("apply_email", "")
+            # Re-enrich for ATS if not detected yet
+            if not ej.ats_platform:
+                _, final_url, raw_html = fetch_full_description(ej.url, company=ej.company)
+                if final_url != ej.url:
+                    ej.url = final_url
+                platform, job_id, board_token = detect_ats(final_url, raw_html)
+                if platform:
+                    ej.ats_platform = platform
+                    ej.ats_job_id = job_id
+                    ej.ats_board_token = board_token
+            if not ej.cover_letter:
+                ej.cover_letter = generate_cover_letter(ej)
+            scored_jobs.append(ej)
+        existing_high_medium = [j for j in scored_jobs if j.score in ("HIGH", "MEDIUM")]
+        if existing_high_medium:
+            log.info("Included %d existing unapplied HIGH/MEDIUM jobs", len(existing_high_medium) - len(high) - len(medium))
 
         # --- Step 5.5: Retry previously failed applications ---
         retry_jobs = get_retry_candidates(conn)

@@ -86,7 +86,8 @@ auto_apply:
     browser: true    # Playwright-based form filling
     email: true      # Resend email with resume
   tiers:
-    - MEDIUM         # Which score tiers to auto-apply
+    - HIGH           # Auto-apply to top matches too
+    - MEDIUM
   max_per_day: 5
   max_retries: 3
 
