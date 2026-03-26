@@ -85,10 +85,69 @@ class TextExtractor(HTMLParser):
         return " ".join(self.text_parts)
 
 
-def fetch_full_description(url: str, max_retries: int = 3) -> tuple[str | None, str, str]:
+ATS_CAREER_PATTERNS = [
+    # (url_template, ats_name) — {slug} gets replaced with company slug
+    ("https://boards.greenhouse.io/{slug}", "greenhouse"),
+    ("https://jobs.lever.co/{slug}", "lever"),
+    ("https://{slug}.jobs.personio.de", "personio"),
+    ("https://{slug}.recruitee.com", "recruitee"),
+    ("https://apply.workable.com/{slug}", "workable"),
+    ("https://{slug}.bamboohr.com/careers", "bamboohr"),
+]
+
+
+def _company_to_slugs(company: str) -> list[str]:
+    """Generate possible URL slugs from a company name."""
+    # Strip common suffixes
+    clean = re.sub(r"\s+(SE|AG|GmbH|Inc|Ltd|Corp|LLC|Co|KG|e\.V\.)\.?$", "", company, flags=re.I).strip()
+    slugs = []
+    # Full name slugged
+    slug = re.sub(r"[^a-z0-9]+", "-", clean.lower()).strip("-")
+    if slug:
+        slugs.append(slug)
+    # First word only (many companies use this)
+    first = slug.split("-")[0]
+    if first and first != slug:
+        slugs.append(first)
+    return slugs
+
+
+def _probe_ats_career_pages(company: str) -> tuple[str, str, str]:
+    """
+    Try known ATS URL patterns for a company to find their real career page.
+    Returns (ats_url, ats_platform, raw_html) or ("", "", "") if not found.
+    """
+    slugs = _company_to_slugs(company)
+    for slug in slugs:
+        for pattern, ats_name in ATS_CAREER_PATTERNS:
+            try:
+                probe_url = pattern.format(slug=slug)
+                resp = _session.get(probe_url, timeout=8, allow_redirects=True)
+                # Verify it's a real career board, not a generic/error page
+                final = resp.url
+                is_generic = any(final.rstrip("/") == base.rstrip("/") for base in [
+                    "https://recruitee.com", "https://www.recruitee.com",
+                    "https://boards.greenhouse.io", "https://jobs.lever.co",
+                ])
+                # Workable redirects bad slugs to /oops
+                if "/oops" in final:
+                    is_generic = True
+                # BambooHR redirects bad slugs to their homepage
+                if final.rstrip("/") in ("https://www.bamboohr.com", "https://bamboohr.com"):
+                    is_generic = True
+                if resp.status_code == 200 and len(resp.text) > 500 and not is_generic:
+                    log.info("  Found %s career page: %s", ats_name, probe_url)
+                    return resp.url, ats_name, resp.text
+            except Exception:
+                continue
+    return "", "", ""
+
+
+def fetch_full_description(url: str, company: str = "", max_retries: int = 3) -> tuple[str | None, str, str]:
     """
     Fetch a job URL and extract the visible text content.
-    Retries on timeouts and 5xx errors with exponential backoff.
+    If the URL is an aggregator (Adzuna, etc.) that blocks scraping,
+    probes known ATS career page patterns using the company name.
 
     Returns:
         (text_content, final_url_after_redirects, raw_html)
@@ -100,7 +159,10 @@ def fetch_full_description(url: str, max_retries: int = 3) -> tuple[str | None, 
                 if attempt < max_retries - 1:
                     time.sleep(2 * (attempt + 1))
                     continue
-                return None, url, ""
+                break  # fall through to ATS probe
+            if resp.status_code in (403, 404):
+                break  # aggregator blocking — fall through to ATS probe
+
             resp.raise_for_status()
 
             final_url = resp.url
@@ -113,14 +175,23 @@ def fetch_full_description(url: str, max_retries: int = 3) -> tuple[str | None, 
             text = re.sub(r"\s+", " ", text).strip()
             return text[:3000], final_url, raw_html
         except requests.exceptions.HTTPError:
-            return None, url, ""
+            break  # fall through to ATS probe
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
             if attempt < max_retries - 1:
                 time.sleep(2 * (attempt + 1))
                 continue
-            return None, url, ""
+            break
         except Exception:
-            return None, url, ""
+            break
+
+    # Aggregator URL failed — try to find the company's real career page
+    if company:
+        ats_url, ats_name, raw_html = _probe_ats_career_pages(company)
+        if ats_url:
+            extractor = TextExtractor()
+            extractor.feed(raw_html)
+            text = re.sub(r"\s+", " ", extractor.get_text()).strip()
+            return text[:3000], ats_url, raw_html
 
     return None, url, ""
 
@@ -153,7 +224,7 @@ def extract_apply_email(text: str) -> str:
 
 def _fetch_for_job(job: Job) -> tuple[Job, str | None, str, str]:
     """Fetch full description for a single job. Thread-safe helper."""
-    full_text, final_url, raw_html = fetch_full_description(job.url)
+    full_text, final_url, raw_html = fetch_full_description(job.url, company=job.company)
     return job, full_text, final_url, raw_html
 
 
