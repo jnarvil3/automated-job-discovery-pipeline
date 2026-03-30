@@ -5,18 +5,17 @@
 # Communicates via feedback files, loops until morning
 # ============================================================
 
-set -euo pipefail
-
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FEEDBACK_DIR="$PROJECT_DIR/.overnight"
 LOG_DIR="$FEEDBACK_DIR/logs"
+PROMPT_DIR="$FEEDBACK_DIR/prompts"
 TOOLS="Bash,Read,Edit,Write,Glob,Grep,Agent"
 
-MAX_CYCLES=12            # Max build-review cycles (each ~30-45 min)
+MAX_CYCLES=12
 STARTED_AT=$(date +%s)
-MAX_HOURS=8              # Stop after this many hours
+MAX_HOURS=8
 
-mkdir -p "$FEEDBACK_DIR" "$LOG_DIR"
+mkdir -p "$FEEDBACK_DIR" "$LOG_DIR" "$PROMPT_DIR"
 
 # ── Initial task seed ──
 cat > "$FEEDBACK_DIR/current-task.md" << 'SEED'
@@ -30,7 +29,7 @@ cat > "$FEEDBACK_DIR/current-task.md" << 'SEED'
   - Languages: Portuguese (native), English (C2), Spanish (C2), German (A1)
   - 8+ years experience in finance, impact investing, consulting
   - Fix screening_answers.years_of_experience from "0-1" to "8+"
-- Fix duplicate job detection (Mast-Jägermeister appeared twice in digest)
+- Fix duplicate job detection (Mast-Jagermeister appeared twice in digest)
 - Tighten scoring: marketing roles should be MEDIUM at best (secondary field)
 
 ## Priority 2: Core Improvements
@@ -49,7 +48,9 @@ echo "  Max cycles: $MAX_CYCLES | Max hours: $MAX_HOURS"
 echo "  Project: $PROJECT_DIR"
 echo "============================================================"
 
-for cycle in $(seq 1 $MAX_CYCLES); do
+cycle=0
+for i in $(seq 1 $MAX_CYCLES); do
+  cycle=$i
   elapsed=$(( ($(date +%s) - STARTED_AT) / 3600 ))
   if [ "$elapsed" -ge "$MAX_HOURS" ]; then
     echo "[$(date)] Time limit reached ($MAX_HOURS hours). Stopping."
@@ -57,14 +58,18 @@ for cycle in $(seq 1 $MAX_CYCLES); do
   fi
 
   echo ""
-  echo "════════════════════════════════════════════════════════════"
+  echo "============================================================"
   echo "  CYCLE $cycle / $MAX_CYCLES  |  Elapsed: ${elapsed}h"
-  echo "════════════════════════════════════════════════════════════"
+  echo "============================================================"
 
-  # ── PHASE 1: BUILDER ──
-  echo "[$(date)] BUILDER starting..."
+  # ── Write builder prompt to file ──
+  REVIEW_HINT="This is the first cycle. Start with Priority 1 tasks."
+  if [ -f "$FEEDBACK_DIR/review-feedback.md" ]; then
+    REVIEW_HINT="IMPORTANT: Read $FEEDBACK_DIR/review-feedback.md for the reviewer suggestions from last cycle. Address these."
+  fi
 
-  BUILDER_PROMPT="You are the BUILDER agent for an automated job discovery pipeline.
+  cat > "$PROMPT_DIR/builder.txt" << BEOF
+You are the BUILDER agent for an automated job discovery pipeline.
 
 Your working directory is: $PROJECT_DIR
 
@@ -74,37 +79,36 @@ Read $FEEDBACK_DIR/current-task.md for your task queue. Work through items in pr
 ## Rules
 - Read docs_from_amane/ for Amane's CV, cover letter, and context BEFORE making changes
 - Read existing code before modifying it
-- Make focused, incremental changes — one concern per commit
+- Make focused, incremental changes - one concern per commit
 - Commit each meaningful change with a clear message
 - After finishing a task, remove it from current-task.md and add a note to $FEEDBACK_DIR/completed.md
 - If you get stuck on something, skip it and move to the next task
-- Do NOT push to remote — just commit locally
-- Work for as long as needed to make real progress, but don't loop forever on one issue
+- Do NOT push to remote - just commit locally
+- Work for as long as needed to make real progress, but do not loop forever on one issue
 
 ## What cycle is this?
-Cycle $cycle of $MAX_CYCLES. $([ -f "$FEEDBACK_DIR/review-feedback.md" ] && echo 'IMPORTANT: Read review-feedback.md for the reviewer agent suggestions from last cycle — address these.' || echo 'This is the first cycle — start with Priority 1 tasks.')"
+Cycle $cycle of $MAX_CYCLES. $REVIEW_HINT
+BEOF
 
-  claude -p "$BUILDER_PROMPT" \
-    --allowedTools "$TOOLS" \
-    2>&1 | tee "$LOG_DIR/builder-cycle-$cycle.log"
-
+  echo "[$(date)] BUILDER starting..."
+  cat "$PROMPT_DIR/builder.txt" | claude -p --allowedTools "$TOOLS" > "$LOG_DIR/builder-cycle-$cycle.log" 2>&1 || true
   echo "[$(date)] BUILDER finished cycle $cycle"
 
-  # ── PHASE 2: REVIEWER ──
-  echo "[$(date)] REVIEWER starting..."
-
-  REVIEWER_PROMPT="You are the REVIEWER agent — a senior engineering critic reviewing work done on an automated job discovery pipeline.
+  # ── Write reviewer prompt to file ──
+  REVIEW_DATE=$(date)
+  cat > "$PROMPT_DIR/reviewer.txt" << REOF
+You are the REVIEWER agent - a senior engineering critic reviewing work done on an automated job discovery pipeline.
 
 Your working directory is: $PROJECT_DIR
 
 ## Your Job
-1. Run 'git log --oneline -20' to see recent commits
+1. Run git log --oneline -20 to see recent commits
 2. Read the changed files (use git diff HEAD~5 or similar to see what was modified)
 3. Read the full codebase structure and key files
-4. Read docs_from_amane/ to understand the end user (Amane — international student job hunting in Germany)
+4. Read docs_from_amane/ to understand the end user (Amane - international student job hunting in Germany)
 
 ## Review Dimensions
-Evaluate the CURRENT state of the project across ALL of these dimensions. Be specific — name files, line numbers, and concrete suggestions:
+Evaluate the CURRENT state of the project across ALL of these dimensions. Be specific - name files, line numbers, and concrete suggestions:
 
 ### 1. TECHNICAL QUALITY
 - Code bugs, edge cases, error handling gaps
@@ -144,29 +148,24 @@ Evaluate the CURRENT state of the project across ALL of these dimensions. Be spe
 - Any user-facing output that could be improved
 
 ## Output
-Write your review to $FEEDBACK_DIR/review-feedback.md in this format:
+Write your review to $FEEDBACK_DIR/review-feedback.md using this format:
 
-# Review — Cycle $cycle
-Date: $(date)
+# Review - Cycle $cycle
+Date: $REVIEW_DATE
 
 ## Critical Issues (fix immediately)
-- ...
 
 ## High Priority Improvements
-- ...
 
 ## Medium Priority Improvements
-- ...
 
 ## Creative Ideas (nice to have)
-- ...
 
-Then update $FEEDBACK_DIR/current-task.md — ADD your top suggestions as new Priority 3 items (keep existing unfinished tasks). Be specific enough that the builder agent can act on each item without asking questions."
+Then update $FEEDBACK_DIR/current-task.md - ADD your top suggestions as new Priority 3 items (keep existing unfinished tasks). Be specific enough that the builder agent can act on each item without asking questions.
+REOF
 
-  claude -p "$REVIEWER_PROMPT" \
-    --allowedTools "$TOOLS" \
-    2>&1 | tee "$LOG_DIR/reviewer-cycle-$cycle.log"
-
+  echo "[$(date)] REVIEWER starting..."
+  cat "$PROMPT_DIR/reviewer.txt" | claude -p --allowedTools "$TOOLS" > "$LOG_DIR/reviewer-cycle-$cycle.log" 2>&1 || true
   echo "[$(date)] REVIEWER finished cycle $cycle"
   echo "[$(date)] Review written to $FEEDBACK_DIR/review-feedback.md"
 done
